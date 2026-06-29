@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS classes (
 );
 
 -- Now we can add the FK from users to classes
+ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_users_class;
 ALTER TABLE users ADD CONSTRAINT fk_users_class
   FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL;
 
