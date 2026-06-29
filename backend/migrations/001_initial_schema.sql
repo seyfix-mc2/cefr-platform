@@ -208,6 +208,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_schools_updated_at ON schools;
 CREATE TRIGGER trg_schools_updated_at
   BEFORE UPDATE ON schools
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
