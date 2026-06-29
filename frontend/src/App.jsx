@@ -7,8 +7,8 @@ import { useState, useEffect, createContext, useContext } from "react";
 
 const MOCK_DB = {
   school: {
-    name: "Greenfield Language Academy",
-    slug: "greenfield",
+    name: "Demo Language School",
+    slug: "demo",
     primary_color: "#4F46E5",
     logo_url: null,
     license: {
