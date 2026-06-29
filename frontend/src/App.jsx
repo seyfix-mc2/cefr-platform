@@ -286,6 +286,8 @@ function LoginPage({ onLogin }) {
     await new Promise(r => setTimeout(r, 400));
     const user = MOCK_DB.users[username];
     if (user && password === (username === "admin" ? "admin123" : username === "teacher1" ? "teacher123" : "student123")) {
+      // Save school slug so API requests work on single-domain deployments
+      localStorage.setItem('school_slug', MOCK_DB.school.slug);
       onLogin(user);
     } else {
       setError("Invalid username or password.");

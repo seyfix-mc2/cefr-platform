@@ -1,19 +1,14 @@
-/**
- * API client
- * Automatically includes JWT token and school slug header.
- */
-
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 function getSchoolSlug() {
-  // In production: extracted from subdomain
-  // In dev: from localStorage or env
+  // 1. Try subdomain (production with custom domain)
   const host = window.location.hostname;
   const baseDomain = import.meta.env.VITE_BASE_DOMAIN || 'yourplatform.com';
   if (host.endsWith(`.${baseDomain}`)) {
     return host.replace(`.${baseDomain}`, '');
   }
-  return localStorage.getItem('dev_school_slug') || 'demo';
+  // 2. Use slug saved at login time (works for Render single-domain deployments)
+  return localStorage.getItem('school_slug') || 'demo';
 }
 
 function getToken() {
@@ -36,9 +31,9 @@ async function request(path, options = {}) {
   });
 
   if (res.status === 401) {
-    // Token expired - clear and redirect
     localStorage.removeItem('token');
-    window.location.href = '/login';
+    localStorage.removeItem('school_slug');
+    window.location.href = '/';
     return;
   }
 
@@ -58,10 +53,17 @@ export const api = {
   delete: (path) => request(path, { method: 'DELETE' }),
 
   // Auth
-  login: (username, password) => request('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ username, password }),
-  }),
+  login: async (username, password) => {
+    const data = await request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    // Save slug at login time so all subsequent requests use the right tenant
+    if (data?.school?.slug) {
+      localStorage.setItem('school_slug', data.school.slug);
+    }
+    return data;
+  },
   me: () => request('/auth/me'),
 
   // Admin
@@ -107,6 +109,12 @@ export const api = {
   // Progress
   getProgress: () => request('/progress'),
   getResumePoint: () => request('/progress/resume'),
+
+  // Content upload
+  previewContent: (text, level) => request('/upload/content/preview', { method: 'POST', body: JSON.stringify({ text, level }) }),
+  uploadContent: (text, level, replace) => request('/upload/content', { method: 'POST', body: JSON.stringify({ text, level, replace }) }),
+  listUploadedContent: (level) => request(`/upload/content/list${level ? `?level=${level}` : ''}`),
+  deleteContent: (level, skill) => request('/upload/content', { method: 'DELETE', body: JSON.stringify({ level, skill }) }),
 };
 
 export function setToken(token) {
@@ -115,10 +123,5 @@ export function setToken(token) {
 
 export function clearToken() {
   localStorage.removeItem('token');
+  localStorage.removeItem('school_slug');
 }
-
-// Content upload
-api.previewContent = (text, level) => request('/upload/content/preview', { method: 'POST', body: JSON.stringify({ text, level }) });
-api.uploadContent = (text, level, replace) => request('/upload/content', { method: 'POST', body: JSON.stringify({ text, level, replace }) });
-api.listUploadedContent = (level) => request(`/upload/content/list${level ? `?level=${level}` : ''}`);
-api.deleteContent = (level, skill) => request('/upload/content', { method: 'DELETE', body: JSON.stringify({ level, skill }) });
