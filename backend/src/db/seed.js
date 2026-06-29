@@ -1,17 +1,22 @@
-import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { query } from './pool.js';
 import { v4 as uuidv4 } from 'uuid';
 
-async function seed() {
-  console.log('Seeding development data...');
+export async function seedIfEmpty() {
+  // Check if any school already exists — if so, skip seeding
+  const { rows } = await query('SELECT id FROM schools LIMIT 1');
+  if (rows.length > 0) {
+    console.log('[seed] Database already has data, skipping seed.');
+    return;
+  }
+
+  console.log('[seed] Empty database detected, seeding demo data...');
 
   // 1. School
   const schoolId = uuidv4();
   await query(`
     INSERT INTO schools (id, name, slug, license_key, license_expiry, seats_teachers, seats_students, primary_color)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (slug) DO NOTHING
   `, [schoolId, 'Demo Language School', 'demo', 'DEMO-KEY-2026', '2027-12-31', 10, 200, '#4F46E5']);
 
   // 2. Admin
@@ -20,7 +25,6 @@ async function seed() {
   await query(`
     INSERT INTO users (id, school_id, role, username, password_hash, display_name)
     VALUES ($1, $2, 'admin', 'admin', $3, 'School Admin')
-    ON CONFLICT (school_id, username) DO NOTHING
   `, [adminId, schoolId, adminHash]);
 
   // 3. Teacher
@@ -29,7 +33,6 @@ async function seed() {
   await query(`
     INSERT INTO users (id, school_id, role, username, password_hash, display_name, created_by)
     VALUES ($1, $2, 'teacher', 'teacher1', $3, 'Ms. Johnson', $4)
-    ON CONFLICT (school_id, username) DO NOTHING
   `, [teacherId, schoolId, teacherHash, adminId]);
 
   // 4. Class
@@ -37,21 +40,18 @@ async function seed() {
   await query(`
     INSERT INTO classes (id, school_id, teacher_id, name, cefr_level)
     VALUES ($1, $2, $3, 'A2 Morning Class', 'A2')
-    ON CONFLICT DO NOTHING
   `, [classId, schoolId, teacherId]);
 
   // 5. Students
-  const studentNames = ['alice', 'bob', 'carla', 'david', 'elena'];
-  for (const name of studentNames) {
+  for (const name of ['alice', 'bob', 'carla', 'david', 'elena']) {
     const hash = await bcrypt.hash('student123', 12);
     await query(`
       INSERT INTO users (id, school_id, role, username, password_hash, display_name, class_id, cefr_level, created_by)
       VALUES ($1, $2, 'student', $3, $4, $5, $6, 'A2', $7)
-      ON CONFLICT (school_id, username) DO NOTHING
     `, [uuidv4(), schoolId, name, hash, name.charAt(0).toUpperCase() + name.slice(1), classId, teacherId]);
   }
 
-  // 6. Sample content items (grammar + vocabulary)
+  // 6. Sample content items
   const contentItems = [
     {
       level: 'A2', skill: 'grammar', type: 'multiple_choice',
@@ -60,27 +60,9 @@ async function seed() {
       body: {
         instructions: 'Choose the correct verb form.',
         items: [
-          {
-            id: 1,
-            prompt: 'She _____ (work) in London every day.',
-            options: ['works', 'is working', 'worked', 'has worked'],
-            correct: 0,
-            explanation: 'We use present simple for routines and habits.'
-          },
-          {
-            id: 2,
-            prompt: 'Look! He _____ (run) very fast.',
-            options: ['runs', 'is running', 'ran', 'run'],
-            correct: 1,
-            explanation: 'We use present continuous for actions happening now.'
-          },
-          {
-            id: 3,
-            prompt: 'They _____ (study) for their exam right now.',
-            options: ['study', 'studied', 'are studying', 'have studied'],
-            correct: 2,
-            explanation: 'Right now signals present continuous.'
-          }
+          { id: 1, prompt: 'She _____ (work) in London every day.', options: ['works', 'is working', 'worked', 'has worked'], correct: 0, explanation: 'We use present simple for routines.' },
+          { id: 2, prompt: 'Look! He _____ (run) very fast.', options: ['runs', 'is running', 'ran', 'run'], correct: 1, explanation: 'We use present continuous for actions happening now.' },
+          { id: 3, prompt: 'They _____ (study) for their exam right now.', options: ['study', 'studied', 'are studying', 'have studied'], correct: 2, explanation: 'Right now signals present continuous.' }
         ]
       }
     },
@@ -105,10 +87,9 @@ async function seed() {
       body: {
         instructions: 'Fill in the blank with the correct preposition: in, on, or at.',
         items: [
-          { id: 1, prompt: 'The meeting is _____ Monday morning.', answer: 'on', explanation: 'Use "on" with days of the week.' },
-          { id: 2, prompt: 'We eat dinner _____ 7 pm.', answer: 'at', explanation: 'Use "at" with specific times.' },
-          { id: 3, prompt: 'She was born _____ July.', answer: 'in', explanation: 'Use "in" with months.' },
-          { id: 4, prompt: 'The party is _____ the weekend.', answer: 'at', explanation: 'Use "at" with "the weekend".' }
+          { id: 1, prompt: 'The meeting is _____ Monday morning.', answer: 'on', explanation: 'Use "on" with days.' },
+          { id: 2, prompt: 'We eat dinner _____ 7 pm.', answer: 'at', explanation: 'Use "at" with times.' },
+          { id: 3, prompt: 'She was born _____ July.', answer: 'in', explanation: 'Use "in" with months.' }
         ]
       }
     },
@@ -119,8 +100,8 @@ async function seed() {
       body: {
         instructions: 'Listen to the sentence and type what you hear.',
         sentences: [
-          { id: 1, text: 'She goes to work by bus every morning.', audio_hint: 'Focus on the verb tense.' },
-          { id: 2, text: 'They are having lunch in the park right now.', audio_hint: 'Listen for the continuous form.' }
+          { id: 1, text: 'She goes to work by bus every morning.' },
+          { id: 2, text: 'They are having lunch in the park right now.' }
         ]
       }
     },
@@ -130,21 +111,8 @@ async function seed() {
       tags: ['pronunciation', 'introductions'],
       body: {
         instructions: 'Read the following passage aloud clearly and naturally.',
-        passage: 'My name is Sarah and I am a teacher. I work at a primary school in the city centre. Every morning I wake up at seven o\'clock and have breakfast before I leave the house. I really enjoy my job because I love working with children.',
-        focus_words: ['teacher', 'breakfast', 'centre', 'enjoy', 'children'],
-        target_pronunciation: ['centre /ˈsentə/', 'breakfast /ˈbrekfəst/']
-      }
-    },
-    {
-      level: 'A1', skill: 'grammar', type: 'sentence_reorder',
-      title: 'Sentence Order: Basic Statements',
-      tags: ['word_order', 'basic'],
-      body: {
-        instructions: 'Put the words in the correct order to make a sentence.',
-        items: [
-          { id: 1, words: ['school', 'goes', 'She', 'to', 'every', 'day'], answer: 'She goes to school every day.' },
-          { id: 2, words: ['have', 'I', 'a', 'cat', 'small'], answer: 'I have a small cat.' }
-        ]
+        passage: "My name is Sarah and I am a teacher. I work at a primary school in the city centre. Every morning I wake up at seven o'clock and have breakfast before I leave the house.",
+        focus_words: ['teacher', 'breakfast', 'centre', 'enjoy', 'children']
       }
     }
   ];
@@ -156,26 +124,16 @@ async function seed() {
     `, [uuidv4(), item.level, item.skill, item.type, item.title, item.tags, JSON.stringify(item.body)]);
   }
 
-  // 7. Game templates
-  await query(`
-    INSERT INTO game_templates (id, skill, level, mechanic_type, name, config)
-    VALUES 
-      ($1, 'vocabulary', 'A2', 'matching', 'Word Match', $2),
-      ($3, 'grammar', 'A2', 'fill_blank', 'Grammar Fill', $4)
-  `, [
-    uuidv4(), JSON.stringify({ time_limit: 60, pairs_per_round: 6 }),
-    uuidv4(), JSON.stringify({ time_limit: 90, show_hints: true })
-  ]);
-
-  console.log('✓ Seed complete');
-  console.log('\nDemo credentials:');
-  console.log('  Subdomain: demo.yourplatform.com');
-  console.log('  Admin:   admin / admin123');
-  console.log('  Teacher: teacher1 / teacher123');
-  console.log('  Student: alice / student123');
+  console.log('[seed] ✓ Demo data created.');
+  console.log('[seed] Login credentials:');
+  console.log('[seed]   Admin:   admin / admin123');
+  console.log('[seed]   Teacher: teacher1 / teacher123');
+  console.log('[seed]   Student: alice / student123');
 }
 
-seed().catch(err => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+// Allow running directly: node src/db/seed.js
+if (process.argv[1].includes('seed.js')) {
+  import('./pool.js').then(({ default: pool }) => {
+    seedIfEmpty().then(() => pool.end()).catch(err => { console.error(err); process.exit(1); });
+  });
+}

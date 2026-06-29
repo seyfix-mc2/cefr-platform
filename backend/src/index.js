@@ -10,6 +10,7 @@ import contentRoutes from './routes/content.js';
 import speakingRoutes from './routes/speaking.js';
 import assignmentRoutes from './routes/assignments.js';
 import progressRoutes from './routes/progress.js';
+import { seedIfEmpty } from './db/seed.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,12 +35,14 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Auto-migrate then auto-seed if database is empty, then start
 migrate()
+  .then(() => seedIfEmpty())
   .then(() => {
     app.listen(PORT, () => console.log(`🎓 CEFR Platform running on port ${PORT}`));
   })
   .catch(err => {
-    console.error('Migration failed:', err.message);
+    console.error('Startup failed:', err.message);
     process.exit(1);
   });
 
