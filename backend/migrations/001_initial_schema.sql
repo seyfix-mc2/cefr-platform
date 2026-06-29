@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================
 -- SCHOOLS (tenants)
 -- ============================================================
-CREATE TABLE schools (
+CREATE TABLE IF NOT EXISTS schools (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name          TEXT NOT NULL,
   slug          TEXT NOT NULL UNIQUE,           -- subdomain key
@@ -31,7 +31,7 @@ CREATE TABLE schools (
 -- ============================================================
 -- USERS (admin / teacher / student)
 -- ============================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id     UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   role          TEXT NOT NULL CHECK (role IN ('admin','teacher','student')),
@@ -52,7 +52,7 @@ CREATE TABLE users (
 -- ============================================================
 -- CLASSES
 -- ============================================================
-CREATE TABLE classes (
+CREATE TABLE IF NOT EXISTS classes (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id   UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   teacher_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -71,7 +71,7 @@ ALTER TABLE users ADD CONSTRAINT fk_users_class
 -- Content is school-agnostic (global library) but can be
 -- school-specific if school_id is set (teacher-generated).
 -- ============================================================
-CREATE TABLE content_items (
+CREATE TABLE IF NOT EXISTS content_items (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id   UUID REFERENCES schools(id) ON DELETE CASCADE,  -- NULL = global
   level       TEXT NOT NULL CHECK (level IN ('A1','A2','B1','B2')),
@@ -90,7 +90,7 @@ CREATE TABLE content_items (
 -- ============================================================
 -- GAME TEMPLATES
 -- ============================================================
-CREATE TABLE game_templates (
+CREATE TABLE IF NOT EXISTS game_templates (
   id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id             UUID REFERENCES schools(id) ON DELETE CASCADE,
   skill                 TEXT NOT NULL,
@@ -108,7 +108,7 @@ CREATE TABLE game_templates (
 -- ============================================================
 -- SPEAKING ATTEMPTS
 -- ============================================================
-CREATE TABLE speaking_attempts (
+CREATE TABLE IF NOT EXISTS speaking_attempts (
   id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id             UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   student_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -130,7 +130,7 @@ CREATE TABLE speaking_attempts (
 -- ============================================================
 -- ASSIGNMENTS
 -- ============================================================
-CREATE TABLE assignments (
+CREATE TABLE IF NOT EXISTS assignments (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id         UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   teacher_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -150,7 +150,7 @@ CREATE TABLE assignments (
 -- ============================================================
 -- ASSIGNMENT SUBMISSIONS
 -- ============================================================
-CREATE TABLE assignment_submissions (
+CREATE TABLE IF NOT EXISTS assignment_submissions (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id     UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   assignment_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
@@ -165,7 +165,7 @@ CREATE TABLE assignment_submissions (
 -- PROGRESS SNAPSHOTS
 -- Recomputed on each submission for fast dashboard reads
 -- ============================================================
-CREATE TABLE progress_snapshots (
+CREATE TABLE IF NOT EXISTS progress_snapshots (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   school_id   UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   student_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -183,17 +183,17 @@ CREATE TABLE progress_snapshots (
 -- INDEXES
 -- ============================================================
 -- Tenant isolation — most frequent filter
-CREATE INDEX idx_users_school          ON users(school_id);
-CREATE INDEX idx_classes_school        ON classes(school_id);
-CREATE INDEX idx_content_items_level   ON content_items(level, skill);
-CREATE INDEX idx_speaking_student      ON speaking_attempts(student_id, created_at DESC);
-CREATE INDEX idx_speaking_school       ON speaking_attempts(school_id);
-CREATE INDEX idx_assignments_school    ON assignments(school_id, teacher_id);
-CREATE INDEX idx_submissions_student   ON assignment_submissions(student_id);
-CREATE INDEX idx_progress_student      ON progress_snapshots(student_id);
-CREATE INDEX idx_progress_school       ON progress_snapshots(school_id);
+CREATE INDEX IF NOT EXISTS idx_users_school          ON users(school_id);
+CREATE INDEX IF NOT EXISTS idx_classes_school        ON classes(school_id);
+CREATE INDEX IF NOT EXISTS idx_content_items_level   ON content_items(level, skill);
+CREATE INDEX IF NOT EXISTS idx_speaking_student      ON speaking_attempts(student_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_speaking_school       ON speaking_attempts(school_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_school    ON assignments(school_id, teacher_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_student   ON assignment_submissions(student_id);
+CREATE INDEX IF NOT EXISTS idx_progress_student      ON progress_snapshots(student_id);
+CREATE INDEX IF NOT EXISTS idx_progress_school       ON progress_snapshots(school_id);
 -- Audio retention cleanup
-CREATE INDEX idx_speaking_audio_expiry ON speaking_attempts(audio_expires_at)
+CREATE INDEX IF NOT EXISTS idx_speaking_audio_expiry ON speaking_attempts(audio_expires_at)
   WHERE audio_expires_at IS NOT NULL;
 
 -- ============================================================
