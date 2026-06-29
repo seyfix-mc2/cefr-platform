@@ -1,3 +1,4 @@
+import ContentUpload from "./components/ContentUpload.jsx";
 import { useState, useEffect, createContext, useContext } from "react";
 
 // ─────────────────────────────────────────────────────────────
@@ -398,6 +399,7 @@ function AdminDashboard() {
     { id: "teachers", label: "Teachers", icon: "👩‍🏫", active: page === "teachers", onClick: () => setPage("teachers") },
     { id: "progress", label: "School Progress", icon: "📈", active: page === "progress", onClick: () => setPage("progress") },
     { id: "branding", label: "Branding", icon: "🎨", active: page === "branding", onClick: () => setPage("branding") },
+    { id: "upload", label: "Upload Content", icon: "📤", active: page === "upload", onClick: () => setPage("upload") },
   ];
 
   function addTeacher() {
@@ -548,6 +550,8 @@ function AdminDashboard() {
           </Card>
         </div>
       )}
+
+      {page === "upload" && <ContentUpload />}
 
       {page === "branding" && (
         <div className="p-8 max-w-xl">

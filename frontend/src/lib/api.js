@@ -116,3 +116,9 @@ export function setToken(token) {
 export function clearToken() {
   localStorage.removeItem('token');
 }
+
+// Content upload
+api.previewContent = (text, level) => request('/upload/content/preview', { method: 'POST', body: JSON.stringify({ text, level }) });
+api.uploadContent = (text, level, replace) => request('/upload/content', { method: 'POST', body: JSON.stringify({ text, level, replace }) });
+api.listUploadedContent = (level) => request(`/upload/content/list${level ? `?level=${level}` : ''}`);
+api.deleteContent = (level, skill) => request('/upload/content', { method: 'DELETE', body: JSON.stringify({ level, skill }) });

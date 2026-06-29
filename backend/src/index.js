@@ -10,6 +10,7 @@ import contentRoutes from './routes/content.js';
 import speakingRoutes from './routes/speaking.js';
 import assignmentRoutes from './routes/assignments.js';
 import progressRoutes from './routes/progress.js';
+import uploadRoutes from './routes/upload.js';
 import { seedIfEmpty } from './db/seed.js';
 
 const app = express();
@@ -28,6 +29,7 @@ app.use('/content', contentRoutes);
 app.use('/speaking', speakingRoutes);
 app.use('/assignments', assignmentRoutes);
 app.use('/progress', progressRoutes);
+app.use('/upload', uploadRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, _next) => {
@@ -35,7 +37,6 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Auto-migrate then auto-seed if database is empty, then start
 migrate()
   .then(() => seedIfEmpty())
   .then(() => {
