@@ -11,8 +11,9 @@ export async function resolveTenant(req, res, next) {
   try {
     let slug;
 
-    // Dev override via header
-    if (process.env.NODE_ENV !== 'production' && req.headers['x-school-slug']) {
+    // Accept X-School-Slug header in all environments — needed for
+    // single-domain hosts like Render where subdomain routing isn't set up
+    if (req.headers['x-school-slug']) {
       slug = req.headers['x-school-slug'];
     } else {
       // Parse from Host header: demo.yourplatform.com → 'demo'
