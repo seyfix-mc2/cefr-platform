@@ -1068,6 +1068,7 @@ function ExerciseView({ item, onBack }) {
     multiple_choice: MultipleChoiceExercise,
     fill_blank: FillBlankExercise,
     matching: MatchingExercise,
+    sentence_reorder: SentenceReorderExercise,
     dictation: DictationExercise,
     read_aloud: ReadAloudExercise,
     picture_description: PictureDescriptionExercise,
@@ -1251,6 +1252,105 @@ function MatchingExercise({ item }) {
         <div className="p-4 rounded-xl bg-indigo-50 text-center">
           <div className="text-2xl font-bold text-indigo-700">{score}%</div>
           <div className="text-sm text-gray-600 mt-1">{score === 100 ? "Perfect match! 🎉" : "Check the highlighted answers."}</div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SentenceReorderExercise({ item }) {
+  const { items, instructions } = item.body;
+  const [order, setOrder] = useState(() =>
+    Object.fromEntries(items.map(q => [q.id, shuffleWords(q.words)]))
+  );
+  const [submitted, setSubmitted] = useState(false);
+
+  function shuffleWords(words) {
+    return [...words].sort(() => Math.random() - 0.5);
+  }
+
+  function moveWord(qId, fromIdx, toIdx) {
+    if (submitted) return;
+    setOrder(o => {
+      const arr = [...o[qId]];
+      const [w] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, w);
+      return { ...o, [qId]: arr };
+    });
+  }
+
+  function selectWord(qId, idx, selected, setSelected) {
+    if (submitted) return;
+    if (selected && selected.qId === qId) {
+      if (selected.idx === idx) { setSelected(null); return; }
+      moveWord(qId, selected.idx, idx);
+      setSelected(null);
+    } else {
+      setSelected({ qId, idx });
+    }
+  }
+
+  const [selected, setSelected] = useState(null);
+
+  function submit() { setSubmitted(true); }
+
+  function isCorrect(q) {
+    const built = order[q.id].join(' ').replace(/\s+([.,!?])/g, '$1');
+    const target = q.answer.trim();
+    return built.toLowerCase() === target.toLowerCase();
+  }
+
+  const score = submitted
+    ? Math.round(items.filter(isCorrect).length / items.length * 100)
+    : null;
+
+  return (
+    <Card className="p-6">
+      <p className="text-gray-600 mb-6">{instructions}</p>
+      <div className="space-y-6">
+        {items.map(q => {
+          const correct = submitted && isCorrect(q);
+          return (
+            <div key={q.id}>
+              <div className="text-sm font-medium text-gray-500 mb-2">Sentence {q.id}</div>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {order[q.id].map((word, idx) => {
+                  const isSelected = selected && selected.qId === q.id && selected.idx === idx;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => selectWord(q.id, idx, selected, setSelected)}
+                      disabled={submitted}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all
+                        ${submitted
+                          ? (correct ? 'border-green-400 bg-green-50 text-green-700' : 'border-red-300 bg-red-50 text-red-700')
+                          : isSelected
+                            ? 'border-indigo-500 bg-indigo-100 text-indigo-700'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 cursor-pointer'}`}
+                    >
+                      {word}
+                    </button>
+                  );
+                })}
+              </div>
+              {!submitted && (
+                <p className="text-xs text-gray-400">Tap a word, then tap where you want to move it.</p>
+              )}
+              {submitted && !correct && (
+                <p className="text-sm text-gray-600 mt-1 bg-gray-50 rounded-lg px-3 py-2">
+                  ✓ Correct: <strong>{q.answer}</strong>
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {!submitted ? (
+        <Button onClick={submit} className="mt-6">Submit</Button>
+      ) : (
+        <div className="mt-6 p-4 rounded-xl bg-indigo-50 text-center">
+          <div className="text-2xl font-bold text-indigo-700">{score}%</div>
+          <div className="text-sm text-gray-600 mt-1">{score === 100 ? "Perfect! 🎉" : "Review the correct order above."}</div>
         </div>
       )}
     </Card>
