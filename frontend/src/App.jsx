@@ -1002,35 +1002,59 @@ function StudentHome({ user, onStart }) {
 }
 
 function ContentList({ skill, level, onSelect }) {
-  const items = MOCK_DB.content.filter(c => c.skill === skill && c.level === level);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const icons = { grammar: "📖", vocabulary: "🔤", speaking: "🎤" };
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    api.getContent({ skill, level })
+      .then(data => setItems(data.items || []))
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [skill, level]);
 
   return (
     <div className="p-8 max-w-3xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-1 capitalize">{skill}</h1>
       <div className="flex items-center gap-2 mb-8">
         <CEFRBadge level={level} />
-        <span className="text-sm text-gray-500">{items.length} exercises available</span>
+        <span className="text-sm text-gray-500">{loading ? "Loading…" : `${items.length} exercises available`}</span>
       </div>
-      <div className="space-y-3">
-        {items.map(item => (
-          <Card key={item.id} className="p-5 hover:border-indigo-300 transition-colors cursor-pointer" onClick={() => onSelect(item)}>
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-xl">
-                {icons[item.skill]}
+
+      {loading && (
+        <div className="flex justify-center py-16">
+          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {error && (
+        <div className="text-sm text-red-600 bg-red-50 rounded-lg px-4 py-3">⚠️ {error}</div>
+      )}
+
+      {!loading && !error && (
+        <div className="space-y-3">
+          {items.map(item => (
+            <Card key={item.id} className="p-5 hover:border-indigo-300 transition-colors cursor-pointer" onClick={() => onSelect(item)}>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-xl">
+                  {icons[item.skill] || "📚"}
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-900">{item.title}</div>
+                  <div className="text-sm text-gray-500 mt-0.5 capitalize">{item.type.replace("_", " ")}</div>
+                </div>
+                <span className="text-gray-300 text-lg">→</span>
               </div>
-              <div className="flex-1">
-                <div className="font-semibold text-gray-900">{item.title}</div>
-                <div className="text-sm text-gray-500 mt-0.5 capitalize">{item.type.replace("_", " ")}</div>
-              </div>
-              <span className="text-gray-300 text-lg">→</span>
-            </div>
-          </Card>
-        ))}
-        {items.length === 0 && (
-          <EmptyState icon="📚" title="No exercises yet" description="Content for this level and skill is coming soon." />
-        )}
-      </div>
+            </Card>
+          ))}
+          {items.length === 0 && (
+            <EmptyState icon="📚" title="No exercises yet" description="Content for this level and skill is coming soon." />
+          )}
+        </div>
+      )}
     </div>
   );
 }
