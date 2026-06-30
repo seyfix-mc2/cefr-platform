@@ -1,4 +1,5 @@
 import ContentUpload from "./components/ContentUpload.jsx";
+import { api } from "./lib/api.js";
 import { useState, useEffect, createContext, useContext } from "react";
 
 // ─────────────────────────────────────────────────────────────
@@ -283,16 +284,15 @@ function LoginPage({ onLogin }) {
     e.preventDefault();
     setError("");
     setLoading(true);
-    await new Promise(r => setTimeout(r, 400));
-    const user = MOCK_DB.users[username];
-    if (user && password === (username === "admin" ? "admin123" : username === "teacher1" ? "teacher123" : "student123")) {
-      // Save school slug so API requests work on single-domain deployments
-      localStorage.setItem('school_slug', MOCK_DB.school.slug);
-      onLogin(user);
-    } else {
-      setError("Invalid username or password.");
+    try {
+      const data = await api.login(username, password);
+      // api.login() already saves token + school_slug to localStorage
+      onLogin(data.user, data.school);
+    } catch (err) {
+      setError(err.message || "Invalid username or password.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (
@@ -302,7 +302,7 @@ function LoginPage({ onLogin }) {
           <div className="inline-flex items-center justify-center w-14 h-14 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
             <span className="text-white text-2xl">🎓</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Greenfield Language Academy</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Language Learning Platform</h1>
           <p className="text-sm text-gray-500 mt-1">Sign in to continue</p>
         </div>
 
@@ -1559,10 +1559,34 @@ function StudentAssignmentsView() {
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const school = MOCK_DB.school;
+  const [school, setSchool] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
 
-  function handleLogin(u) { setUser(u); }
-  function handleLogout() { setUser(null); }
+  // On load, try to restore session from a saved token
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) { setCheckingSession(false); return; }
+    api.me()
+      .then(data => { setUser(data.user); setSchool(data.school); })
+      .catch(() => { localStorage.removeItem('token'); localStorage.removeItem('school_slug'); })
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  function handleLogin(u, s) { setUser(u); setSchool(s); }
+  function handleLogout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('school_slug');
+    setUser(null);
+    setSchool(null);
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
