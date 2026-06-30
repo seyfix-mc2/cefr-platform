@@ -26,12 +26,17 @@ export function parseContentFile(text, level) {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n');
 
-  // Try Format 1 first (has "Lesson N" headers)
+  // Format 3: Markdown (has ## Exercise headings)
+  if (/^##\s+Exercise/im.test(normalized)) {
+    return parseFormat3(normalized, level);
+  }
+
+  // Format 1: has "Lesson N" headers
   if (/lesson\s+\d+/i.test(normalized)) {
     return parseFormat1(normalized, level);
   }
 
-  // Otherwise use Format 2 (compact/inline)
+  // Format 2: compact/inline
   return parseFormat2(normalized, level);
 }
 
@@ -329,4 +334,155 @@ function buildBody(ex) {
     return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, words: it.words, answer: it.answer })) };
   }
   return { instructions: ex.instructions, items: ex.items };
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// FORMAT 3: Markdown format
+// # Title
+// ## Exercise A: Type
+// 1. item
+// | table rows for matching |
+// ## Answer Key
+// **Exercise A:** 1. answer 2. answer
+// 1-B, 2-A for matching
+// ─────────────────────────────────────────────────────────────
+function parseFormat3(text, level) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l && l !== '---');
+
+  // Extract title from # heading
+  const titleLine = lines.find(l => l.startsWith('# '));
+  const rawTitle = titleLine ? titleLine.replace(/^#\s*/, '').replace(/^[A-B][12]\s*Unit\s*\d+\s*[:\-–]\s*/i, '').trim() : 'Lesson';
+  const lessonNumber = 1;
+  const lessonTitle = rawTitle;
+
+  // Split into sections by ## headings
+  const sections = [];
+  let current = null;
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      if (current) sections.push(current);
+      current = { header: line.replace(/^##\s*/, ''), lines: [] };
+    } else if (current) {
+      current.lines.push(line);
+    }
+  }
+  if (current) sections.push(current);
+
+  // Separate answer key section from exercise sections
+  const answerKeySection = sections.find(s => /answer key/i.test(s.header));
+  const exerciseSections = sections.filter(s => /exercise\s+[A-C]/i.test(s.header));
+
+  // Parse answer key
+  const answerKey = {};
+  if (answerKeySection) {
+    let currentLetter = null;
+    for (const line of answerKeySection.lines) {
+      // Match "**Exercise A:**" or "Exercise A:" — strip any * characters first
+      const cleaned = line.replace(/\*/g, '').trim();
+      const exHeader = cleaned.match(/^Exercise\s+([A-C])\s*:?/i);
+      if (exHeader) {
+        currentLetter = exHeader[1].toUpperCase();
+        answerKey[currentLetter] = '';
+        continue;
+      }
+      if (currentLetter && line) {
+        answerKey[currentLetter] += ' ' + line;
+      }
+    }
+  }
+
+  // Parse each exercise
+  const exercises = [];
+  for (const section of exerciseSections) {
+    const exMatch = section.header.match(/exercise\s+([A-C])\s*[:\-–]\s*(.+)/i);
+    if (!exMatch) continue;
+    const letter = exMatch[1].toUpperCase();
+    const typeHint = exMatch[2].trim();
+    const type = detectExerciseType(typeHint);
+
+    const instructions = section.lines.find(l => !/^\d+\.|\|/.test(l) && l.length > 10) || getInstructions(type);
+    const rawAnswers = answerKey[letter] || '';
+    const answers = parseMarkdownAnswers(rawAnswers, type);
+    const items = parseMarkdownItems(section.lines, type, answers);
+
+    if (items.length > 0) {
+      exercises.push({ letter, title: typeHint, type, instructions, items });
+    }
+  }
+
+  const contentItems = exercises.map(ex => toContentItem(ex, level, lessonNumber, lessonTitle));
+  if (contentItems.length === 0) return [];
+  return [{ lessonNumber, lessonTitle, contentItems, _nextLine: 9999 }];
+}
+
+function parseMarkdownAnswers(text, type) {
+  const answers = {};
+  if (!text) return answers;
+
+  if (type === 'matching') {
+    // "1-B, 2-A, 3-D" — note uppercase letters
+    const matches = text.matchAll(/(\d+)\s*[-–]\s*([A-G])/gi);
+    for (const m of matches) answers[parseInt(m[1])] = m[2].toLowerCase();
+  } else if (type === 'sentence_reorder') {
+    // "1. Sentence one. 2. Sentence two."
+    const matches = text.matchAll(/(\d+)\.\s*([^0-9]+?)(?=\d+\.|$)/g);
+    for (const m of matches) answers[parseInt(m[1])] = m[2].trim();
+  } else {
+    // fill_blank: "1. had already left 2. had finished"
+    const matches = text.matchAll(/(\d+)\.\s*([^0-9]+?)(?=\d+\.|$)/g);
+    for (const m of matches) answers[parseInt(m[1])] = m[2].trim();
+  }
+  return answers;
+}
+
+function parseMarkdownItems(lines, type, answers) {
+  const items = [];
+
+  if (type === 'matching') {
+    // Parse markdown table rows: | 1. Term | A. Definition |
+    for (const line of lines) {
+      if (!line.startsWith('|')) continue;
+      const cells = line.split('|').map(c => c.trim()).filter(Boolean);
+      if (cells.length < 2) continue;
+      // Skip header rows
+      if (/starter|ending|:---/i.test(cells[0])) continue;
+
+      const termMatch = cells[0].match(/^(\d+)\.\s*(.+)/);
+      if (!termMatch) continue;
+      const id = parseInt(termMatch[1]);
+      const term = termMatch[2].trim();
+
+      // Definition cell: "A. text" — strip the letter prefix
+      const defMatch = cells[1].match(/^[A-G]\.\s*(.+)/i);
+      const definition = defMatch ? defMatch[1].trim() : cells[1].trim();
+
+      items.push({ id, term, definition, correctOption: answers[id] || '' });
+    }
+  } else if (type === 'sentence_reorder') {
+    // "1. (word / word / word)" or "1. word / word / word"
+    for (const line of lines) {
+      const m = line.match(/^(\d+)\.\s*[\(]?(.+?)[\)]?$/);
+      if (!m) continue;
+      const id = parseInt(m[1]);
+      const content = m[2].replace(/[\(\)]/g, '').trim();
+      // Words separated by / or spaces (if answer exists, shuffle the answer words)
+      const words = content.split('/').map(w => w.trim()).filter(Boolean);
+      // If no slashes, split by spaces
+      const finalWords = words.length > 1 ? words : content.split(' ').filter(Boolean);
+      items.push({ id, words: finalWords, answer: answers[id] || '' });
+    }
+  } else {
+    // fill_blank: numbered lines with __________ as blank
+    for (const line of lines) {
+      const m = line.match(/^(\d+)\.\s*(.+)/);
+      if (!m) continue;
+      const id = parseInt(m[1]);
+      // Normalize blanks: __________ → _____
+      const prompt = m[2].replace(/_{3,}/g, '_____').trim();
+      items.push({ id, prompt, answer: answers[id] || '', explanation: '' });
+    }
+  }
+
+  return items;
 }
