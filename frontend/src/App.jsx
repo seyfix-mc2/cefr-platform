@@ -169,8 +169,8 @@ function ScorePill({ score }) {
   return <Badge color="red">{score}%</Badge>;
 }
 
-function Card({ children, className = "" }) {
-  return <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`}>{children}</div>;
+function Card({ children, className = "", ...rest }) {
+  return <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`} {...rest}>{children}</div>;
 }
 
 function Button({ children, onClick, variant = "primary", size = "md", disabled = false, type = "button", className = "" }) {
