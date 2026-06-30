@@ -58,6 +58,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     });
+    // Save the JWT token so subsequent requests are authenticated
+    if (data?.token) {
+      localStorage.setItem('token', data.token);
+    }
     // Save slug at login time so all subsequent requests use the right tenant
     if (data?.school?.slug) {
       localStorage.setItem('school_slug', data.school.slug);
