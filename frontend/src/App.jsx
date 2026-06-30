@@ -589,14 +589,77 @@ function AdminDashboard() {
 
 function TeacherDashboard() {
   const [page, setPage] = useState("roster");
-  const [selectedClass, setSelectedClass] = useState(MOCK_DB.classes[0]);
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [newStudent, setNewStudent] = useState({ username: "", password: "", display_name: "", cefr_level: "A1" });
+  const [addError, setAddError] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  // Load classes on mount
+  useEffect(() => {
+    api.getClasses()
+      .then(data => {
+        setClasses(data.classes || []);
+        if (data.classes?.length > 0) setSelectedClassId(data.classes[0].id);
+      })
+      .catch(err => console.error('[classes]', err))
+      .finally(() => setLoadingClasses(false));
+  }, []);
+
+  // Load students whenever selected class changes
+  useEffect(() => {
+    if (!selectedClassId) return;
+    setLoadingStudents(true);
+    api.getStudents(selectedClassId)
+      .then(data => setStudents(data.students || []))
+      .catch(err => console.error('[students]', err))
+      .finally(() => setLoadingStudents(false));
+  }, [selectedClassId]);
+
+  async function refreshStudents() {
+    if (!selectedClassId) return;
+    const data = await api.getStudents(selectedClassId);
+    setStudents(data.students || []);
+  }
+
+  async function handleAddStudent() {
+    setAddError("");
+    if (!newStudent.username || !newStudent.password) {
+      setAddError("Username and password are required.");
+      return;
+    }
+    setAdding(true);
+    try {
+      await api.createStudent(selectedClassId, newStudent);
+      await refreshStudents();
+      setShowAddStudent(false);
+      setNewStudent({ username: "", password: "", display_name: "", cefr_level: "A1" });
+    } catch (err) {
+      setAddError(err.message || "Failed to create student.");
+    } finally {
+      setAdding(false);
+    }
+  }
 
   const nav = [
     { id: "roster", label: "Class Roster", icon: "👥", active: page === "roster", onClick: () => { setPage("roster"); setSelectedStudent(null); } },
     { id: "assignments", label: "Assignments", icon: "📝", active: page === "assignments", onClick: () => setPage("assignments") },
   ];
+
+  const avgScore = students.length
+    ? Math.round(students.reduce((s, st) => s + (Number(st.avg_score) || 0), 0) / students.length)
+    : 0;
+  const activeThisWeek = students.filter(s => {
+    if (!s.last_login_at) return false;
+    const days = (Date.now() - new Date(s.last_login_at).getTime()) / 86400000;
+    return days <= 7;
+  }).length;
 
   return (
     <Layout nav={nav}>
@@ -608,73 +671,114 @@ function TeacherDashboard() {
               <p className="text-gray-500 mt-1">Manage your students and track progress</p>
             </div>
             <div className="ml-auto flex gap-3">
-              <select
-                value={selectedClass.id}
-                onChange={e => setSelectedClass(MOCK_DB.classes.find(c => c.id === e.target.value))}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                {MOCK_DB.classes.filter(c => c.teacher_id === "u2").map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              {loadingClasses ? (
+                <span className="text-sm text-gray-400">Loading classes…</span>
+              ) : classes.length === 0 ? (
+                <span className="text-sm text-gray-400">No classes yet</span>
+              ) : (
+                <select
+                  value={selectedClassId || ""}
+                  onChange={e => setSelectedClassId(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <Card className="p-5">
-              <div className="text-2xl font-bold text-gray-900">{MOCK_DB.students.length}</div>
-              <div className="text-sm text-gray-500 mt-0.5">Students enrolled</div>
-            </Card>
-            <Card className="p-5">
-              <div className="text-2xl font-bold text-gray-900">78%</div>
-              <div className="text-sm text-gray-500 mt-0.5">Class avg score</div>
-            </Card>
-            <Card className="p-5">
-              <div className="text-2xl font-bold text-gray-900">4/5</div>
-              <div className="text-sm text-gray-500 mt-0.5">Active this week</div>
-            </Card>
-          </div>
+          {classes.length === 0 && !loadingClasses && (
+            <EmptyState icon="🏫" title="No classes yet" description="Create a class first before adding students." />
+          )}
 
-          <Card>
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Students</h2>
-              <Button size="sm" variant="secondary">+ Add student</Button>
+          {selectedClassId && (
+            <>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <Card className="p-5">
+                  <div className="text-2xl font-bold text-gray-900">{students.length}</div>
+                  <div className="text-sm text-gray-500 mt-0.5">Students enrolled</div>
+                </Card>
+                <Card className="p-5">
+                  <div className="text-2xl font-bold text-gray-900">{avgScore}%</div>
+                  <div className="text-sm text-gray-500 mt-0.5">Class avg score</div>
+                </Card>
+                <Card className="p-5">
+                  <div className="text-2xl font-bold text-gray-900">{activeThisWeek}/{students.length}</div>
+                  <div className="text-sm text-gray-500 mt-0.5">Active this week</div>
+                </Card>
+              </div>
+
+              <Card>
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900">Students</h2>
+                  <Button size="sm" variant="secondary" onClick={() => setShowAddStudent(true)}>+ Add student</Button>
+                </div>
+
+                {loadingStudents ? (
+                  <div className="flex justify-center py-10">
+                    <div className="w-6 h-6 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : students.length === 0 ? (
+                  <EmptyState icon="🧑‍🎓" title="No students yet" description="Add your first student to this class." action={<Button onClick={() => setShowAddStudent(true)}>+ Add student</Button>} />
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left px-6 py-3 font-medium text-gray-500">Student</th>
+                        <th className="text-left px-6 py-3 font-medium text-gray-500">Level</th>
+                        <th className="text-left px-6 py-3 font-medium text-gray-500">Exercises</th>
+                        <th className="text-left px-6 py-3 font-medium text-gray-500">Avg Score</th>
+                        <th className="text-left px-6 py-3 font-medium text-gray-500">Last Active</th>
+                        <th className="px-6 py-3" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {students.map(s => (
+                        <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-semibold text-sm">{s.display_name?.[0] || s.username[0]}</div>
+                              <div>
+                                <div className="font-medium text-gray-900">{s.display_name || s.username}</div>
+                                <div className="text-xs text-gray-400">@{s.username}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">{s.cefr_level ? <CEFRBadge level={s.cefr_level} /> : <span className="text-gray-300 text-xs">—</span>}</td>
+                          <td className="px-6 py-4 text-gray-700">{s.exercises_completed || 0}</td>
+                          <td className="px-6 py-4"><ScorePill score={s.avg_score ? Math.round(s.avg_score) : null} /></td>
+                          <td className="px-6 py-4 text-gray-500 text-xs">{s.last_login_at ? new Date(s.last_login_at).toLocaleDateString() : "Never"}</td>
+                          <td className="px-6 py-4">
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedStudent(s)}>View →</Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Card>
+            </>
+          )}
+
+          <Modal open={showAddStudent} onClose={() => setShowAddStudent(false)} title="Add Student">
+            <div className="space-y-4">
+              <Input label="Full name" value={newStudent.display_name} onChange={e => setNewStudent(s => ({ ...s, display_name: e.target.value }))} placeholder="e.g. Maria Santos" />
+              <Input label="Username" value={newStudent.username} onChange={e => setNewStudent(s => ({ ...s, username: e.target.value.toLowerCase().trim() }))} placeholder="e.g. maria" />
+              <Input label="Initial password" type="password" value={newStudent.password} onChange={e => setNewStudent(s => ({ ...s, password: e.target.value }))} placeholder="Minimum 8 characters" />
+              <Select label="CEFR level" value={newStudent.cefr_level} onChange={e => setNewStudent(s => ({ ...s, cefr_level: e.target.value }))}>
+                {["A1", "A2", "B1", "B2"].map(l => <option key={l} value={l}>{l}</option>)}
+              </Select>
+              {addError && <p className="text-sm text-red-600">{addError}</p>}
+              <div className="flex gap-3 pt-2">
+                <Button onClick={handleAddStudent} disabled={adding} className="flex-1 justify-center">
+                  {adding ? "Creating…" : "Create account"}
+                </Button>
+                <Button variant="secondary" onClick={() => setShowAddStudent(false)} className="flex-1 justify-center">Cancel</Button>
+              </div>
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-6 py-3 font-medium text-gray-500">Student</th>
-                  <th className="text-left px-6 py-3 font-medium text-gray-500">Level</th>
-                  <th className="text-left px-6 py-3 font-medium text-gray-500">Exercises</th>
-                  <th className="text-left px-6 py-3 font-medium text-gray-500">Avg Score</th>
-                  <th className="text-left px-6 py-3 font-medium text-gray-500">Last Active</th>
-                  <th className="px-6 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {MOCK_DB.students.map(s => (
-                  <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-semibold text-sm">{s.display_name[0]}</div>
-                        <div>
-                          <div className="font-medium text-gray-900">{s.display_name}</div>
-                          <div className="text-xs text-gray-400">@{s.username}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4"><CEFRBadge level={s.cefr_level} /></td>
-                    <td className="px-6 py-4 text-gray-700">{s.exercises_completed}</td>
-                    <td className="px-6 py-4"><ScorePill score={s.avg_score} /></td>
-                    <td className="px-6 py-4 text-gray-500 text-xs">{new Date(s.last_login_at).toLocaleDateString()}</td>
-                    <td className="px-6 py-4">
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedStudent(s)}>View →</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          </Modal>
         </div>
       )}
 
