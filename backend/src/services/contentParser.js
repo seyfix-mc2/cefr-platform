@@ -31,6 +31,11 @@ export function parseContentFile(text, level) {
     return parseFormat3(normalized, level);
   }
 
+  // Format 4: B2 inline pipe format (has "| ANSWER:" pattern)
+  if (/\|\s*ANSWER:/i.test(normalized)) {
+    return parseFormat4(normalized, level);
+  }
+
   // Format 1: has "Lesson N" headers (any style including indented or embedded)
   if (/lesson\s+\d+/i.test(normalized)) {
     return parseFormat1(normalized, level);
@@ -560,3 +565,154 @@ function parseMarkdownItems(lines, type, answers) {
 
   return items;
 }
+
+
+// ─────────────────────────────────────────────────────────────
+// FORMAT 4: B2 Inline pipe format
+// Each item: "N. prompt | A. opt  B. opt | ANSWER: X"
+// Or fill blank: "N. sentence with _____  | ANSWER: word"
+// ─────────────────────────────────────────────────────────────
+function parseFormat4(text, level) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  
+  // Find lesson header
+  let lessonNumber = 1;
+  let lessonTitle = '';
+  const exercises = [];
+  let currentExercise = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Lesson header: "Lesson N – Title" or "Lesson N"
+    const lessonM = line.match(/^Lesson\s+(\d+)\s*[–\-—|:]?\s*(.*)/i);
+    if (lessonM && !/exercise/i.test(line)) {
+      lessonNumber = parseInt(lessonM[1]);
+      lessonTitle = lessonM[2].trim() || '';
+      // If title is on next line
+      if (!lessonTitle && lines[i+1] && !/^exercise/i.test(lines[i+1])) {
+        lessonTitle = lines[i+1].trim();
+      }
+      continue;
+    }
+
+    // Exercise header: "Exercise N – Type" or "Exercise N"
+    const exM = line.match(/^Exercise\s+(\d+)\s*[–\-—|:]?\s*(.*)/i);
+    if (exM) {
+      if (currentExercise) exercises.push(currentExercise);
+      const exNum = parseInt(exM[1]);
+      const exTitle = exM[2].trim();
+      const letter = String.fromCharCode(64 + exNum); // 1→A, 2→B, etc.
+      currentExercise = {
+        letter,
+        number: exNum,
+        title: exTitle,
+        type: detectB2ExerciseType(exTitle, exNum),
+        instructions: '',
+        items: [],
+      };
+      continue;
+    }
+
+    if (!currentExercise) continue;
+
+    // Instructions line (no number, no pipe)
+    if (!/^\d+\./.test(line) && !line.includes('|') && currentExercise.items.length === 0) {
+      if (line && !/^word bank/i.test(line) && !/^[A-Z]\)/.test(line)) {
+        currentExercise.instructions = line;
+      }
+      continue;
+    }
+
+    // Numbered item with pipe: "1. prompt | A. x  B. y | ANSWER: z"
+    const itemM = line.match(/^(\d+)\.\s*(.+)/);
+    if (itemM) {
+      const id = parseInt(itemM[1]);
+      const rest = itemM[2];
+      const parts = rest.split('|').map(p => p.trim());
+      
+      const prompt = parts[0].trim();
+      const answerPart = parts.find(p => /^ANSWER:/i.test(p));
+      const answer = answerPart ? answerPart.replace(/^ANSWER:\s*/i, '').trim() : '';
+      const optionsPart = parts.find(p => /^[A-D][.)]/i.test(p));
+
+      if (optionsPart) {
+        // Multiple choice or cloze: has A. B. C. D. options
+        const options = [];
+        const optMatches = optionsPart.matchAll(/([A-D])[.)\s]+([^A-D]+?)(?=[A-D][.)]|$)/gi);
+        for (const m of optMatches) options.push(m[2].trim());
+        
+        // Find correct index
+        const correctLetter = answer.replace(/[^A-D]/gi, '').toUpperCase();
+        const correctIdx = correctLetter ? correctLetter.charCodeAt(0) - 65 : 0;
+
+        currentExercise.items.push({
+          id, prompt,
+          options: options.length ? options : [answer],
+          correct: correctIdx,
+          answer: correctLetter || answer,
+        });
+      } else if (prompt.includes('/') && currentExercise.type === 'multiple_choice') {
+        // Exercise 4 style: "sentence with opt1 / opt2"
+        currentExercise.items.push({
+          id, prompt, answer,
+          options: [],
+          correct: 0,
+        });
+      } else {
+        // Fill in blank
+        currentExercise.items.push({ id, prompt, answer, explanation: '' });
+      }
+    }
+  }
+
+  if (currentExercise) exercises.push(currentExercise);
+
+  const contentItems = exercises
+    .filter(ex => ex.items.length > 0)
+    .map(ex => ({
+      level,
+      skill: 'grammar',
+      type: ex.type,
+      title: `Lesson ${lessonNumber}: ${lessonTitle} — Exercise ${ex.letter}`,
+      tags: [`lesson_${lessonNumber}`, 'grammar', level.toLowerCase(), `exercise_${ex.number}`],
+      body: buildBodyB2(ex),
+      lesson_number: lessonNumber,
+      exercise_letter: ex.letter,
+    }));
+
+  return [{ lessonNumber, lessonTitle, contentItems, _nextLine: 9999 }];
+}
+
+function detectB2ExerciseType(title, num) {
+  const t = (title || '').toLowerCase();
+  if (num === 1) return 'multiple_choice';
+  if (num === 2) return 'fill_blank';
+  if (num === 3) return 'multiple_choice'; // cloze
+  if (num === 4) return 'multiple_choice'; // choose correct
+  if (t.includes('fill') || t.includes('blank')) return 'fill_blank';
+  if (t.includes('cloze') || t.includes('use of english')) return 'multiple_choice';
+  return 'multiple_choice';
+}
+
+function buildBodyB2(ex) {
+  if (ex.type === 'fill_blank') {
+    return {
+      instructions: ex.instructions || 'Fill in the blanks with the correct form.',
+      items: ex.items.map(it => ({
+        id: it.id, prompt: it.prompt, answer: it.answer || '', explanation: ''
+      }))
+    };
+  }
+  return {
+    instructions: ex.instructions || 'Choose the correct option.',
+    items: ex.items.map(it => ({
+      id: it.id,
+      prompt: it.prompt,
+      options: it.options || [],
+      correct: it.correct || 0,
+      answer: it.answer || '',
+    }))
+  };
+}
+
