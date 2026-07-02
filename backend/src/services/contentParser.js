@@ -302,15 +302,33 @@ function mergeAnswerKey(exercises, answerKey) {
   for (const ex of exercises) {
     const answers = answerKey[ex.letter] || [];
     for (const ansLine of answers) {
-      if (ex.type === 'fill_blank') {
-        const m = ansLine.match(/^(\d+)[\.\)]\s*(.+)/);
-        if (m) { const item = ex.items.find(it => it.id === parseInt(m[1])); if (item) item.answer = m[2].trim(); }
-      } else if (ex.type === 'matching') {
-        const m = ansLine.match(/^(\d+)[–\-]([a-g])/i);
+      const t = ansLine.trim();
+      // Skip meta-notes like "(Accept: isn't / aren't)"
+      if (/^\(Accept/i.test(t) || !t) continue;
+
+      if (ex.type === 'matching') {
+        // Format: "1-c" or "1–c"
+        const m = t.match(/^(\d+)[–\-]([a-g])/i);
         if (m) { const item = ex.items.find(it => it.id === parseInt(m[1])); if (item) item.correctOption = m[2].toLowerCase(); }
-      } else if (ex.type === 'sentence_reorder') {
-        const m = ansLine.match(/^(\d+)[\.\)]\s*(.+)/);
-        if (m) { const item = ex.items.find(it => it.id === parseInt(m[1])); if (item) item.answer = m[2].trim(); }
+        continue;
+      }
+
+      // All other types: extract number + answer text
+      // Handles "1.answer", "1. answer", "1) answer"
+      const numMatch = t.match(/^(\d+)[.)]\s*(.*)/);
+      if (!numMatch) continue;
+      const id = parseInt(numMatch[1]);
+      const answer = numMatch[2].trim();
+      const item = ex.items.find(it => it.id === id);
+      if (!item) continue;
+
+      if (ex.type === 'sentence_reorder') {
+        item.answer = answer;
+      } else if (ex.type === 'true_false') {
+        item.answer = answer.toLowerCase().startsWith('t') ? 'true' : 'false';
+      } else {
+        // fill_blank, rewrite, short_answer, error_correction, sort, multiple_choice
+        item.answer = answer;
       }
     }
   }
@@ -330,14 +348,28 @@ function toContentItem(ex, level, lessonNumber, lessonTitle) {
 }
 
 function buildBody(ex) {
-  if (ex.type === 'fill_blank') {
-    return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, prompt: it.prompt, answer: it.answer, explanation: it.explanation || '' })) };
+  if (ex.type === 'fill_blank' || ex.type === 'rewrite' || ex.type === 'short_answer' || ex.type === 'error_correction') {
+    return { instructions: ex.instructions, items: ex.items.map(it => ({
+      id: it.id,
+      prompt: (it.prompt || '').replace(/\s*[→>]\s*_+\s*$/, '').trim(),
+      answer: it.answer || '',
+      explanation: it.explanation || ''
+    }))};
   }
   if (ex.type === 'matching') {
     return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, term: it.term, definition: it.definition, correct_option: it.correctOption || '' })) };
   }
   if (ex.type === 'sentence_reorder') {
     return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, words: it.words, answer: it.answer })) };
+  }
+  if (ex.type === 'multiple_choice') {
+    return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, prompt: it.prompt || '', options: it.options || [], correct: it.correct ?? 0, answer: it.answer || '' })) };
+  }
+  if (ex.type === 'sort') {
+    return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, term: it.term || it.prompt || '', answer: it.answer || '' })) };
+  }
+  if (ex.type === 'true_false') {
+    return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, prompt: it.prompt || '', answer: it.answer || '' })) };
   }
   return { instructions: ex.instructions, items: ex.items };
 }
