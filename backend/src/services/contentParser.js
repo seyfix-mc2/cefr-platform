@@ -271,8 +271,14 @@ function getInstructions(type) {
 
 function detectExerciseType(title) {
   const t = title.toLowerCase();
-  if (t.includes('fill') || t.includes('blank')) return 'fill_blank';
-  if (t.includes('match') || t.includes('tap')) return 'matching';
+  if (t.includes('error correction') || t.includes('find and correct') || t.includes('correct the mistake')) return 'error_correction';
+  if (t.includes('true') && t.includes('false')) return 'true_false';
+  if (t.includes('sort') || t.includes('column') || t.includes('frequency scale') || t.includes('ordering')) return 'sort';
+  if (t.includes('rewrite') || t.includes('transform') || t.includes('replace') || t.includes('join')) return 'rewrite';
+  if (t.includes('short answer') || t.includes('completion')) return 'short_answer';
+  if (t.includes('multiple choice') || t.includes('choose the correct')) return 'multiple_choice';
+  if (t.includes('fill') || t.includes('blank') || t.includes('complete')) return 'fill_blank';
+  if (t.includes('match') || t.includes('tap') || t.includes('correct article') || t.includes('correct demonstrative') || t.includes('correct form') || t.includes('correct conjunction')) return 'matching';
   if (t.includes('unjumble') || t.includes('order') || t.includes('reorder')) return 'sentence_reorder';
   return 'fill_blank';
 }
