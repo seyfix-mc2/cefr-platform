@@ -223,3 +223,19 @@ router.post('/bulk', async (req, res) => {
     error_details: errors,
   });
 });
+
+/**
+ * DELETE /upload/level
+ * Wipe all content for a specific level + skill.
+ * Used for cleanup before re-uploading.
+ */
+router.delete('/level', async (req, res) => {
+  const { level, skill = 'grammar' } = req.body;
+  if (!level) return res.status(400).json({ error: 'level required' });
+
+  const { rowCount } = await query(
+    `DELETE FROM content_items WHERE school_id = $1 AND level = $2 AND skill = $3`,
+    [req.school.id, level, skill]
+  );
+  res.json({ deleted: rowCount, level, skill });
+});
