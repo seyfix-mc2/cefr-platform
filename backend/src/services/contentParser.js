@@ -31,7 +31,7 @@ export function parseContentFile(text, level) {
     return parseFormat3(normalized, level);
   }
 
-  // Format 1: has "Lesson N" headers
+  // Format 1: has "Lesson N" headers (any style including indented or embedded)
   if (/lesson\s+\d+/i.test(normalized)) {
     return parseFormat1(normalized, level);
   }
@@ -48,9 +48,15 @@ function parseFormat1(text, level) {
   const lessons = [];
   let i = 0;
 
+  // Find ALL lesson header lines first
+  // Supports: "LESSON 1 —", "LESSON 1 |", "LESSON 1:", "  LESSON 1 —" (indented)
+  // Also: "ENGLISH B1 — LESSON 5: ..." style
   while (i < lines.length) {
     const line = lines[i].trim();
-    if (/^lesson\s+\d+/i.test(line) && !/answer key/i.test(line)) {
+    const isLesson = /^lesson\s+\d+/i.test(line) ||
+                     /^english\s+b\d.*lesson\s+\d+/i.test(line) ||
+                     /^b\d\s+english.*lesson\s+\d+/i.test(line);
+    if (isLesson && !/answer key|end of/i.test(line)) {
       const lesson = parseFormat1Lesson(lines, i, level);
       if (lesson) {
         lessons.push(lesson);
@@ -65,7 +71,30 @@ function parseFormat1(text, level) {
 
 function parseFormat1Lesson(lines, startIdx, level) {
   const titleLine = lines[startIdx].trim();
-  const lessonMatch = titleLine.match(/lesson\s+(\d+)\s*[–\-:]\s*(.+)/i);
+  // Handle multiple formats:
+  // "LESSON 1 — Title", "LESSON 1 | Title", "LESSON 1: Title"
+  // "ENGLISH B1 — LESSON 5: Title", "B1 ENGLISH ... LESSON 3 | Title"
+  // "ENGLISH B1 — LESSON 11" (title on next line)
+  let lessonMatch = titleLine.match(/lesson\s+(\d+)\s*[–\-—:|]\s*(.+)/i);
+  if (!lessonMatch) {
+    lessonMatch = titleLine.match(/lesson\s+(\d+)[:\s]+(.+)/i);
+  }
+  if (!lessonMatch) {
+    // Title might be on next line: "ENGLISH B1 — LESSON 11"
+    lessonMatch = titleLine.match(/lesson\s+(\d+)\s*$/i);
+    if (lessonMatch) {
+      // Look ahead for title on next line(s)
+      let titleFromNext = '';
+      for (let k = startIdx + 1; k < Math.min(startIdx + 5, lines.length); k++) {
+        const next = lines[k].trim();
+        if (next && !/^[=\-─━═╔║╚]+$/.test(next) && !/^exercise/i.test(next)) {
+          titleFromNext = next;
+          break;
+        }
+      }
+      lessonMatch = [null, lessonMatch[1], titleFromNext || `Lesson ${lessonMatch[1]}`];
+    }
+  }
   if (!lessonMatch) return null;
 
   const lessonNumber = parseInt(lessonMatch[1]);
@@ -82,7 +111,7 @@ function parseFormat1Lesson(lines, startIdx, level) {
     const line = lines[i].trim();
 
     if (/^lesson\s+\d+/i.test(line) && !/answer key/i.test(line) && i > startIdx + 1) break;
-    if (/answer key/i.test(line)) { inAnswerKey = true; i++; continue; }
+    if (/answer key|answer\s*key/i.test(line)) { inAnswerKey = true; i++; continue; }
 
     if (inAnswerKey) {
       const exMatch = line.match(/^exercise\s+([A-C])/i);
@@ -93,7 +122,9 @@ function parseFormat1Lesson(lines, startIdx, level) {
 
     if (/AI CHATBOT|CHATBOT INTERACTION|LEARNING OBJECTIVES|^D\.\s*-+|^-{10,}|^LESSON \d+:/i.test(line)) { i++; continue; }
 
-    const exHeaderMatch = line.match(/^exercise\s+([A-C])\s*[–\-:]\s*(.+)/i);
+    // Skip "EXERCISE A — ANSWER KEY" lines — these are in the answer section
+    if (/^exercise\s+[A-C].*answer\s*key/i.test(line)) { i++; continue; }
+    const exHeaderMatch = line.match(/^exercise\s+([A-C])\s*[–\-—:|]\s*(.+)/i);
     if (exHeaderMatch) {
       if (currentExercise) exercises.push(currentExercise);
       currentExercise = {
@@ -307,9 +338,12 @@ function mergeAnswerKey(exercises, answerKey) {
       if (/^\(Accept/i.test(t) || !t) continue;
 
       if (ex.type === 'matching') {
-        // Format: "1-c" or "1–c"
-        const m = t.match(/^(\d+)[–\-]([a-g])/i);
-        if (m) { const item = ex.items.find(it => it.id === parseInt(m[1])); if (item) item.correctOption = m[2].toLowerCase(); }
+        // Formats: "1-c", "1–c", "1 → E", "1 — E", "1-B", "1 → B  (explanation)"
+        const m = t.match(/^(\d+)\s*[–\-—→>]+\s*([a-g])/i);
+        if (m) {
+          const item = ex.items.find(it => it.id === parseInt(m[1]));
+          if (item) item.correctOption = m[2].toLowerCase();
+        }
         continue;
       }
 

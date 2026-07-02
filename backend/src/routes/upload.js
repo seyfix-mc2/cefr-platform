@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { parseContentFile } from '../services/contentParser.js';
+import { aiParseContent } from '../services/aiParser.js';
 
 const router = Router();
 router.use(requireAuth, requireRole('admin', 'teacher'));
@@ -25,13 +26,26 @@ router.post('/content', async (req, res) => {
     return res.status(400).json({ error: `level must be one of: ${validLevels.join(', ')}` });
   }
 
-  // Parse the file
+  // Parse the file — try rule-based first, fall back to AI parser
   let lessons;
   try {
     lessons = parseContentFile(text, level);
+    // If rule-based parser found the lesson but got no exercises, use AI
+    const hasExercises = lessons.some(l => l.contentItems?.length > 0);
+    if ((!lessons || lessons.length === 0 || !hasExercises) && process.env.ANTHROPIC_API_KEY) {
+      console.log('[upload] Rule-based parser found no exercises, trying AI parser...');
+      lessons = await aiParseContent(text, level, process.env.ANTHROPIC_API_KEY);
+    }
   } catch (err) {
     console.error('[upload/parse]', err);
-    return res.status(400).json({ error: `Failed to parse file: ${err.message}` });
+    // Last resort: try AI parser
+    try {
+      if (process.env.ANTHROPIC_API_KEY) {
+        lessons = await aiParseContent(text, level, process.env.ANTHROPIC_API_KEY);
+      }
+    } catch (aiErr) {
+      return res.status(400).json({ error: `Failed to parse file: ${err.message}` });
+    }
   }
 
   if (!lessons || lessons.length === 0) {
