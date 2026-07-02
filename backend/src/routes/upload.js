@@ -174,3 +174,52 @@ router.delete('/content', async (req, res) => {
 });
 
 export default router;
+
+/**
+ * POST /upload/bulk
+ * Direct insert of pre-parsed content items (used by bulk upload scripts).
+ * Body: { items: [{ level, skill, type, title, tags, body }], replace_level? }
+ */
+router.post('/bulk', async (req, res) => {
+  const { items, replace_level } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items array required' });
+  }
+
+  if (replace_level) {
+    await query(
+      `DELETE FROM content_items WHERE school_id = $1 AND level = $2 AND skill = 'grammar'`,
+      [req.school.id, replace_level]
+    );
+  }
+
+  let inserted = 0;
+  const errors = [];
+
+  for (const item of items) {
+    try {
+      await query(
+        `INSERT INTO content_items (id, school_id, level, skill, type, title, tags, body)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          (await import('uuid')).v4(),
+          req.school.id,
+          item.level, item.skill, item.type, item.title,
+          item.tags || [],
+          JSON.stringify(item.body),
+        ]
+      );
+      inserted++;
+    } catch (err) {
+      errors.push({ title: item.title, error: err.message });
+    }
+  }
+
+  res.status(201).json({
+    success: true,
+    inserted,
+    errors: errors.length,
+    error_details: errors,
+  });
+});
