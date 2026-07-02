@@ -54,6 +54,7 @@ function parseFormat1(text, level) {
   while (i < lines.length) {
     const line = lines[i].trim();
     const isLesson = /^lesson\s+\d+/i.test(line) ||
+                     /^##\s*lesson\s+\d+/i.test(line) ||
                      /^english\s+b\d.*lesson\s+\d+/i.test(line) ||
                      /^b\d\s+english.*lesson\s+\d+/i.test(line);
     if (isLesson && !/answer key|end of/i.test(line)) {
@@ -75,13 +76,14 @@ function parseFormat1Lesson(lines, startIdx, level) {
   // "LESSON 1 — Title", "LESSON 1 | Title", "LESSON 1: Title"
   // "ENGLISH B1 — LESSON 5: Title", "B1 ENGLISH ... LESSON 3 | Title"
   // "ENGLISH B1 — LESSON 11" (title on next line)
-  let lessonMatch = titleLine.match(/lesson\s+(\d+)\s*[–\-—:|]\s*(.+)/i);
+  const titleClean = titleLine.replace(/^##\s*/, '').trim();
+  let lessonMatch = titleClean.match(/lesson\s+(\d+)\s*[–\-—:|]\s*(.+)/i);
   if (!lessonMatch) {
-    lessonMatch = titleLine.match(/lesson\s+(\d+)[:\s]+(.+)/i);
+    lessonMatch = titleClean.match(/lesson\s+(\d+)[:\s]+(.+)/i);
   }
   if (!lessonMatch) {
     // Title might be on next line: "ENGLISH B1 — LESSON 11"
-    lessonMatch = titleLine.match(/lesson\s+(\d+)\s*$/i);
+    lessonMatch = titleClean.match(/lesson\s+(\d+)\s*$/i);
     if (lessonMatch) {
       // Look ahead for title on next line(s)
       let titleFromNext = '';
