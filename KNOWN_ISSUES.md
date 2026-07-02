@@ -18,3 +18,16 @@ and several were never reconnected to the real API. When testing, the most relia
 find these is to actually click through every flow as each role (admin/teacher/student) and
 watch the Network tab — if a button does nothing or data doesn't match what's in the database,
 it's almost certainly still pointing at MOCK_DB.
+
+## Feature requests (future phases)
+
+### Customizable curriculum per school
+Admin can reorder, rename, add, and hide lessons in the Content Library.
+Each school stores its own curriculum order in a `curriculum` JSONB column on the `schools` table.
+Students see lessons in the school's custom order.
+Implementation: per-school curriculum JSON + dnd-kit for drag-and-drop reordering.
+Build AFTER all content is uploaded and core platform is stable.
+
+### Student level access
+Currently students are assigned a single CEFR level and can only see content for that level.
+Consider: allow students to access content one level below their assigned level for revision.
