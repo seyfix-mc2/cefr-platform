@@ -52,7 +52,7 @@ export function parseContentFile(text, level, skill = 'grammar') {
 // ─────────────────────────────────────────────────────────────
 // FORMAT 1: Original multi-line format with Lesson headers
 // ─────────────────────────────────────────────────────────────
-function parseFormat1(text, level) {
+function parseFormat1(text, level, skill = 'grammar') {
   const lines = text.split('\n');
   const lessons = [];
   let i = 0;
@@ -70,7 +70,7 @@ function parseFormat1(text, level) {
                      /^english\s+b\d.*lesson\s+\d+/i.test(line) ||
                      /^b\d\s+english.*lesson\s+\d+/i.test(line);
     if (isLesson && !/answer key|end of/i.test(line)) {
-      const lesson = parseFormat1Lesson(lines, i, level);
+      const lesson = parseFormat1Lesson(lines, i, level, skill);
       if (lesson) {
         lessons.push(lesson);
         i = lesson._nextLine;
@@ -82,7 +82,7 @@ function parseFormat1(text, level) {
   return lessons;
 }
 
-function parseFormat1Lesson(lines, startIdx, level) {
+function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
   const titleLine = lines[startIdx].trim();
   // Handle multiple formats:
   // "LESSON 1 — Title", "LESSON 1 | Title", "LESSON 1: Title"
@@ -174,7 +174,7 @@ function parseFormat1Lesson(lines, startIdx, level) {
   if (currentExercise) exercises.push(currentExercise);
   mergeAnswerKey(exercises, answerKey);
 
-  const contentItems = exercises.filter(ex => ex.items.length > 0).map(ex => toContentItem(ex, level, lessonNumber, lessonTitle));
+  const contentItems = exercises.filter(ex => ex.items.length > 0).map(ex => toContentItem(ex, level, lessonNumber, lessonTitle, skill));
   return { lessonNumber, lessonTitle, contentItems, _nextLine: i };
 }
 
@@ -182,7 +182,7 @@ function parseFormat1Lesson(lines, startIdx, level) {
 // FORMAT 2: Compact/inline format
 // e.g. "A1 – Title" then inline exercise blocks
 // ─────────────────────────────────────────────────────────────
-function parseFormat2(text, level) {
+function parseFormat2(text, level, skill = 'grammar') {
   // Collapse the whole file into one string for regex parsing
   // (items are wrapped across lines, so we need to rejoin)
   const flat = text.replace(/\n+/g, ' ').replace(/\s{2,}/g, ' ').trim();
@@ -229,7 +229,7 @@ function parseFormat2(text, level) {
     }
   }
 
-  const contentItems = exercises.map(ex => toContentItem(ex, level, lessonNumber, lessonTitle));
+  const contentItems = exercises.map(ex => toContentItem(ex, level, lessonNumber, lessonTitle, skill));
   if (contentItems.length === 0) return [];
 
   return [{ lessonNumber, lessonTitle, contentItems, _nextLine: 9999 }];
@@ -392,7 +392,7 @@ function toContentItem(ex, level, lessonNumber, lessonTitle, skill = 'grammar') 
     skill,
     type: ex.type,
     title: `Lesson ${lessonNumber}: ${lessonTitle} — Exercise ${ex.letter}`,
-    tags: [`lesson_${lessonNumber}`, 'grammar', level.toLowerCase()],
+    tags: [`lesson_${lessonNumber}`, skill, level.toLowerCase()],
     body: buildBody(ex),
     lesson_number: lessonNumber,
     exercise_letter: ex.letter,
@@ -440,23 +440,23 @@ function buildBody(ex) {
 // # Lesson N – Title (h1)
 // ## Exercise A – Type (h2)
 // ─────────────────────────────────────────────────────────────
-function parseFormat3(text, level) {
+function parseFormat3(text, level, skill = 'grammar') {
   // If multiple "# Lesson" headers exist, split and process each
   const raw = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const lessonChunks = raw.split(/(?=^# Lesson\s+\d+)/im).filter(c => /^# Lesson\s+\d+/im.test(c));
   if (lessonChunks.length > 1) {
     const allLessons = [];
     for (const chunk of lessonChunks) {
-      const result = parseFormat3Single(chunk, level);
+      const result = parseFormat3Single(chunk, level, skill);
       if (result) allLessons.push(result);
     }
     return allLessons;
   }
-  const single = parseFormat3Single(text, level);
+  const single = parseFormat3Single(text, level, skill);
   return single ? [single] : [];
 }
 
-function parseFormat3Single(text, level) {
+function parseFormat3Single(text, level, skill = 'grammar') {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l && l !== '---');
 
   // Extract title from # heading: "# Lesson 17 – Nature & The Environment"
@@ -526,7 +526,7 @@ function parseFormat3Single(text, level) {
     }
   }
 
-  const contentItems = exercises.map(ex => toContentItem(ex, level, lessonNumber, lessonTitle));
+  const contentItems = exercises.map(ex => toContentItem(ex, level, lessonNumber, lessonTitle, skill));
   if (contentItems.length === 0) return null;
   return { lessonNumber, lessonTitle, contentItems, _nextLine: 9999 };
 }
@@ -708,10 +708,10 @@ function parseFormat4(text, level) {
     .filter(ex => ex.items.length > 0)
     .map(ex => ({
       level,
-      skill: 'grammar',
+      skill,
       type: ex.type,
       title: `Lesson ${lessonNumber}: ${lessonTitle} — Exercise ${ex.letter}`,
-      tags: [`lesson_${lessonNumber}`, 'grammar', level.toLowerCase(), `exercise_${ex.number}`],
+      tags: [`lesson_${lessonNumber}`, skill, level.toLowerCase(), `exercise_${ex.number}`],
       body: buildBodyB2(ex),
       lesson_number: lessonNumber,
       exercise_letter: ex.letter,
