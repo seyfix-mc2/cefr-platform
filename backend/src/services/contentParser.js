@@ -20,6 +20,8 @@
  *   Answers: 1. Full sentence. 2. Full sentence.
  */
 
+// CEFR Content Parser v2.1 — supports Formats 1-4
+// Last updated: inline Answer Key support, Exercise D, multi-lesson markdown
 export function parseContentFile(text, level) {
   // Normalize line endings and collapse wrapped lines
   const normalized = text
