@@ -132,7 +132,7 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     if (isStandaloneAK) { inAnswerKey = true; i++; continue; }
 
     if (inAnswerKey) {
-      const exMatch = line.match(/^exercise\s+([A-D])/i);
+      const exMatch = line.match(/^exercise\s+([A-G])/i);
       if (exMatch) { currentAnswerSection = exMatch[1].toUpperCase(); answerKey[currentAnswerSection] = []; i++; continue; }
       if (currentAnswerSection && line && /^\d+/.test(line)) answerKey[currentAnswerSection].push(line);
       i++; continue;
@@ -141,8 +141,8 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     if (/AI CHATBOT|CHATBOT INTERACTION|LEARNING OBJECTIVES|^D\.\s*-+|^-{10,}|^LESSON \d+:/i.test(line)) { i++; continue; }
 
     // Skip "EXERCISE A — ANSWER KEY" lines — these are in the answer section
-    if (/^exercise\s+[A-D].*answer\s*key/i.test(line)) { i++; continue; }
-    const exHeaderMatch = line.match(/^exercise\s+([A-D])\s*[–\-—:|]\s*(.+)/i);
+    if (/^exercise\s+[A-G].*answer\s*key/i.test(line)) { i++; continue; }
+    const exHeaderMatch = line.match(/^exercise\s+([A-G])\s*[–\-—:|]\s*(.+)/i);
     if (exHeaderMatch) {
       if (currentExercise) exercises.push(currentExercise);
       currentExercise = {
@@ -165,8 +165,31 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     const itemMatch = line.match(/^(\d+)[\.\)]\s*(.+)/);
     if (itemMatch) {
       const num = parseInt(itemMatch[1]);
-      const content = itemMatch[2].trim();
-      currentExercise.items.push(parseItem(currentExercise.type, num, content));
+      const rawContent = itemMatch[2].trim();
+
+      // Handle inline pipe format: "prompt | A. opt B. opt | ANSWER: X" or "term | ANSWER: category"
+      if (rawContent.includes('| ANSWER:') || rawContent.includes('|ANSWER:')) {
+        const parts = rawContent.split(/\s*\|\s*/);
+        const prompt = parts[0].trim();
+        const answerPart = parts.find(p => /^ANSWER:/i.test(p));
+        const answer = answerPart ? answerPart.replace(/^ANSWER:\s*/i, '').split('(')[0].trim() : '';
+        const optionsPart = parts.find(p => /^[A-D][.)]/i.test(p));
+
+        if (optionsPart) {
+          // Multiple choice: has A. B. C. options
+          const options = [];
+          const optMatches = optionsPart.matchAll(/([A-D])[.)\s]+([^A-D|]+?)(?=[A-D][.)]|\||$)/gi);
+          for (const m of optMatches) options.push(m[2].trim());
+          const correctLetter = answer.replace(/[^A-D]/gi, '').toUpperCase();
+          const correctIdx = correctLetter ? correctLetter.charCodeAt(0) - 65 : 0;
+          currentExercise.items.push({ id: num, prompt, options, correct: correctIdx, answer: correctLetter });
+        } else {
+          // Sort or true_false: just prompt + answer
+          currentExercise.items.push({ id: num, prompt, term: prompt, answer, explanation: '' });
+        }
+      } else {
+        currentExercise.items.push(parseItem(currentExercise.type, num, rawContent));
+      }
     }
     i++;
   }
@@ -321,11 +344,12 @@ function getInstructions(type) {
 function detectExerciseType(title) {
   const t = title.toLowerCase();
   if (t.includes('error correction') || t.includes('find and correct') || t.includes('correct the mistake')) return 'error_correction';
+  if (t.includes('collocation check') || t.includes('collocation swipe') || t.includes('swipe')) return 'true_false';
   if (t.includes('true') && t.includes('false')) return 'true_false';
   if (t.includes('categorize') || t.includes('categorise') || t.includes('sort') || t.includes('column') || t.includes('frequency scale') || t.includes('ordering') || t.includes('odd one out')) return 'sort';
   if (t.includes('rewrite') || t.includes('transform') || t.includes('replace') || t.includes('join') || t.includes('combine') || t.includes('sentence combine')) return 'rewrite';
   if (t.includes('short answer') || t.includes('completion') || t.includes('form fill')) return 'short_answer';
-  if (t.includes('multiple choice') || t.includes('choose the correct') || t.includes('mime guess') || t.includes('choose correct') || t.includes('choose meaning') || t.includes('choose function') || t.includes('sentence choice') || t.includes('follow instructions') || t.includes('map task')) return 'multiple_choice';
+  if (t.includes('multiple choice') || t.includes('choose the correct') || t.includes('mime guess') || t.includes('choose correct') || t.includes('choose meaning') || t.includes('choose function') || t.includes('sentence choice') || t.includes('follow instructions') || t.includes('map task') || t.includes('gap fill') || t.includes('gap-fill') || t.includes('context choice') || t.includes('definition match')) return 'multiple_choice';
   if (t.includes('fill') || t.includes('blank') || t.includes('complete') || t.includes('sentence order')) return 'fill_blank';
   if (t.includes('match') || t.includes('tap') || t.includes('drag') || t.includes('emoji') || t.includes('memory') || t.includes('opposite') || t.includes('pair') || t.includes('correct article') || t.includes('correct demonstrative') || t.includes('correct form') || t.includes('correct conjunction')) return 'matching';
   if (t.includes('unjumble') || t.includes('reorder') || t.includes('reorder') || t.includes('drag path') || t.includes('sequence') || t.includes('put') && t.includes('order')) return 'sentence_reorder';
