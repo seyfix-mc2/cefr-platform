@@ -43,9 +43,17 @@ router.post('/content', async (req, res) => {
   console.log('[upload] total items:', allItems.length);
 
   if (allItems.length === 0) {
+    // Check which parser version is running
+    const { parseContentFile: _pcf } = await import('../services/contentParser.js');
+    const parserVersion = _pcf.toString().includes('isStandaloneAK') ? 'v2.1' : 'v1.0';
     return res.status(400).json({ 
       error: 'No exercises could be parsed from the file.',
-      debug: { lessons_found: lessons.length, lesson_titles: lessons.map(l => l.lessonTitle) }
+      debug: { 
+        lessons_found: lessons.length, 
+        lesson_titles: lessons.map(l => l.lessonTitle),
+        parser_version: parserVersion,
+        first_100_chars: text.slice(0, 100)
+      }
     });
   }
 
