@@ -31,8 +31,10 @@ export function parseContentFile(text, level) {
     return parseFormat3(normalized, level);
   }
 
-  // Format 4: B2 inline pipe format (has "| ANSWER:" pattern)
-  if (/\|\s*ANSWER:/i.test(normalized)) {
+  // Format 4: B2 inline pipe format 
+  // Only trigger if exercises use numbers (Exercise 1, 2, 3) not letters (Exercise A, B, C)
+  // AND has pipe-answer pattern throughout
+  if (/\|\s*ANSWER:/i.test(normalized) && /^Exercise\s+\d+\s*[–\-—|]/im.test(normalized)) {
     return parseFormat4(normalized, level);
   }
 
@@ -121,10 +123,14 @@ function parseFormat1Lesson(lines, startIdx, level) {
     const line = lines[i].trim();
 
     if ((/^lesson\s+\d+/i.test(line) || /^vocabulary\s+lesson\s+\d+/i.test(line) || /^📘\s*(vocabulary\s+)?lesson\s+\d+/i.test(line)) && !/answer key/i.test(line) && i > startIdx + 1) break;
-    if (/answer key|answer\s*key/i.test(line)) { inAnswerKey = true; i++; continue; }
+
+    // Only enter global answer key mode for final answer key section (e.g. "Answer Key – Lesson 2")
+    // NOT for inline per-exercise answer keys like "Answer Key: 1-d, 2-e" or standalone "Answer Key:"
+    const isStandaloneAK = /^answer key\s*[–\-—]\s*lesson/i.test(line);
+    if (isStandaloneAK) { inAnswerKey = true; i++; continue; }
 
     if (inAnswerKey) {
-      const exMatch = line.match(/^exercise\s+([A-C])/i);
+      const exMatch = line.match(/^exercise\s+([A-D])/i);
       if (exMatch) { currentAnswerSection = exMatch[1].toUpperCase(); answerKey[currentAnswerSection] = []; i++; continue; }
       if (currentAnswerSection && line && /^\d+/.test(line)) answerKey[currentAnswerSection].push(line);
       i++; continue;
@@ -133,8 +139,8 @@ function parseFormat1Lesson(lines, startIdx, level) {
     if (/AI CHATBOT|CHATBOT INTERACTION|LEARNING OBJECTIVES|^D\.\s*-+|^-{10,}|^LESSON \d+:/i.test(line)) { i++; continue; }
 
     // Skip "EXERCISE A — ANSWER KEY" lines — these are in the answer section
-    if (/^exercise\s+[A-C].*answer\s*key/i.test(line)) { i++; continue; }
-    const exHeaderMatch = line.match(/^exercise\s+([A-C])\s*[–\-—:|]\s*(.+)/i);
+    if (/^exercise\s+[A-D].*answer\s*key/i.test(line)) { i++; continue; }
+    const exHeaderMatch = line.match(/^exercise\s+([A-D])\s*[–\-—:|]\s*(.+)/i);
     if (exHeaderMatch) {
       if (currentExercise) exercises.push(currentExercise);
       currentExercise = {
@@ -401,7 +407,15 @@ function buildBody(ex) {
     }))};
   }
   if (ex.type === 'matching') {
-    return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, term: it.term, definition: it.definition, correct_option: it.correctOption || '' })) };
+    const defs = ex._defs || {};
+    return { instructions: ex.instructions, items: ex.items.map(it => ({
+      id: it.id,
+      term: it.term,
+      // Use correctOption to look up definition from _defs if not already set
+      definition: it.definition || (it.correctOption && defs[it.correctOption]) || 
+                  (it.optionLetter && defs[it.optionLetter]) || '',
+      correct_option: it.correctOption || it.optionLetter || '',
+    })) };
   }
   if (ex.type === 'sentence_reorder') {
     return { instructions: ex.instructions, items: ex.items.map(it => ({ id: it.id, words: it.words, answer: it.answer })) };
@@ -420,23 +434,40 @@ function buildBody(ex) {
 
 
 // ─────────────────────────────────────────────────────────────
-// FORMAT 3: Markdown format
-// # Title
-// ## Exercise A: Type
-// 1. item
-// | table rows for matching |
-// ## Answer Key
-// **Exercise A:** 1. answer 2. answer
-// 1-B, 2-A for matching
+// FORMAT 3: Markdown format — supports multiple lessons
+// # Lesson N – Title (h1)
+// ## Exercise A – Type (h2)
 // ─────────────────────────────────────────────────────────────
 function parseFormat3(text, level) {
+  // If multiple "# Lesson" headers exist, split and process each
+  const raw = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  const lessonChunks = raw.split(/(?=^# Lesson\s+\d+)/im).filter(c => /^# Lesson\s+\d+/im.test(c));
+  if (lessonChunks.length > 1) {
+    const allLessons = [];
+    for (const chunk of lessonChunks) {
+      const result = parseFormat3Single(chunk, level);
+      if (result) allLessons.push(result);
+    }
+    return allLessons;
+  }
+  const single = parseFormat3Single(text, level);
+  return single ? [single] : [];
+}
+
+function parseFormat3Single(text, level) {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l && l !== '---');
 
-  // Extract title from # heading
+  // Extract title from # heading: "# Lesson 17 – Nature & The Environment"
   const titleLine = lines.find(l => l.startsWith('# '));
-  const rawTitle = titleLine ? titleLine.replace(/^#\s*/, '').replace(/^[A-B][12]\s*Unit\s*\d+\s*[:\-–]\s*/i, '').trim() : 'Lesson';
-  const lessonNumber = 1;
-  const lessonTitle = rawTitle;
+  let lessonNumber = 1;
+  let lessonTitle = 'Lesson';
+  if (titleLine) {
+    const lm = titleLine.replace(/^#\s*/, '').match(/(?:lesson\s+(\d+)\s*[–\-—:|]\s*)?(.+)/i);
+    if (lm) {
+      lessonNumber = lm[1] ? parseInt(lm[1]) : 1;
+      lessonTitle = lm[2].trim();
+    }
+  }
 
   // Split into sections by ## headings
   const sections = [];
@@ -453,7 +484,7 @@ function parseFormat3(text, level) {
 
   // Separate answer key section from exercise sections
   const answerKeySection = sections.find(s => /answer key/i.test(s.header));
-  const exerciseSections = sections.filter(s => /exercise\s+[A-C]/i.test(s.header));
+  const exerciseSections = sections.filter(s => /exercise\s+[A-D]/i.test(s.header));
 
   // Parse answer key
   const answerKey = {};
@@ -477,7 +508,7 @@ function parseFormat3(text, level) {
   // Parse each exercise
   const exercises = [];
   for (const section of exerciseSections) {
-    const exMatch = section.header.match(/exercise\s+([A-C])\s*[:\-–]\s*(.+)/i);
+    const exMatch = section.header.match(/exercise\s+([A-D])\s*[:\-–—]\s*(.+)/i);
     if (!exMatch) continue;
     const letter = exMatch[1].toUpperCase();
     const typeHint = exMatch[2].trim();
@@ -494,8 +525,8 @@ function parseFormat3(text, level) {
   }
 
   const contentItems = exercises.map(ex => toContentItem(ex, level, lessonNumber, lessonTitle));
-  if (contentItems.length === 0) return [];
-  return [{ lessonNumber, lessonTitle, contentItems, _nextLine: 9999 }];
+  if (contentItems.length === 0) return null;
+  return { lessonNumber, lessonTitle, contentItems, _nextLine: 9999 };
 }
 
 function parseMarkdownAnswers(text, type) {
