@@ -12,7 +12,7 @@ router.use(requireAuth, requireRole('admin', 'teacher'));
  * Body: { text, level, replace? }
  */
 router.post('/content', async (req, res) => {
-  const { text, level, replace = false } = req.body;
+  const { text, level, skill = 'grammar', replace = false } = req.body;
 
   if (!text || !level) {
     return res.status(400).json({ error: 'text and level are required' });
@@ -25,11 +25,14 @@ router.post('/content', async (req, res) => {
 
   let lessons;
   try {
-    lessons = parseContentFile(text, level);
+    lessons = parseContentFile(text, level, skill);
   } catch (err) {
     console.error('[upload/parse]', err);
     return res.status(400).json({ error: `Failed to parse file: ${err.message}` });
   }
+
+  console.log('[upload] parsed', lessons?.length, 'lessons, level:', level, 'skill:', skill, 'text length:', text?.length);
+  lessons?.forEach(l => console.log(`  L${l.lessonNumber}: ${l.lessonTitle} — ${l.contentItems?.length || 0} exercises`));
 
   if (!lessons || lessons.length === 0) {
     return res.status(400).json({ error: 'No lessons found in file. Check the format.' });
@@ -37,8 +40,13 @@ router.post('/content', async (req, res) => {
 
   const allItems = lessons.flatMap(l => l.contentItems || []);
 
+  console.log('[upload] total items:', allItems.length);
+
   if (allItems.length === 0) {
-    return res.status(400).json({ error: 'No exercises could be parsed from the file.' });
+    return res.status(400).json({ 
+      error: 'No exercises could be parsed from the file.',
+      debug: { lessons_found: lessons.length, lesson_titles: lessons.map(l => l.lessonTitle) }
+    });
   }
 
   if (replace) {

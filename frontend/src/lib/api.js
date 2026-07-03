@@ -116,7 +116,7 @@ export const api = {
 
   // Content upload
   previewContent: (text, level) => request('/upload/content/preview', { method: 'POST', body: JSON.stringify({ text, level }) }),
-  uploadContent: (text, level, replace) => request('/upload/content', { method: 'POST', body: JSON.stringify({ text, level, replace }) }),
+  uploadContent: (text, level, skill, replace) => request('/upload/content', { method: 'POST', body: JSON.stringify({ text, level, skill: skill || 'grammar', replace }) }),
   listUploadedContent: (level) => request(`/upload/content/list${level ? `?level=${level}` : ''}`),
   deleteContent: (level, skill) => request('/upload/content', { method: 'DELETE', body: JSON.stringify({ level, skill }) }),
 };

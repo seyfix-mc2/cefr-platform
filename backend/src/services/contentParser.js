@@ -22,7 +22,7 @@
 
 // CEFR Content Parser v2.1 — supports Formats 1-4
 // Last updated: inline Answer Key support, Exercise D, multi-lesson markdown
-export function parseContentFile(text, level) {
+export function parseContentFile(text, level, skill = 'grammar') {
   // Normalize line endings and collapse wrapped lines
   const normalized = text
     .replace(/\r\n/g, '\n')
@@ -30,23 +30,23 @@ export function parseContentFile(text, level) {
 
   // Format 3: Markdown (has ## Exercise headings)
   if (/^##\s+Exercise/im.test(normalized)) {
-    return parseFormat3(normalized, level);
+    return parseFormat3(normalized, level, skill);
   }
 
   // Format 4: B2 inline pipe format 
   // Only trigger if exercises use numbers (Exercise 1, 2, 3) not letters (Exercise A, B, C)
   // AND has pipe-answer pattern throughout
   if (/\|\s*ANSWER:/i.test(normalized) && /^Exercise\s+\d+\s*[–\-—|]/im.test(normalized)) {
-    return parseFormat4(normalized, level);
+    return parseFormat4(normalized, level, skill);
   }
 
   // Format 1: has "Lesson N" headers (any style including indented or embedded)
   if (/lesson\s+\d+/i.test(normalized)) {
-    return parseFormat1(normalized, level);
+    return parseFormat1(normalized, level, skill);
   }
 
   // Format 2: compact/inline
-  return parseFormat2(normalized, level);
+  return parseFormat2(normalized, level, skill);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -386,10 +386,10 @@ function mergeAnswerKey(exercises, answerKey) {
   }
 }
 
-function toContentItem(ex, level, lessonNumber, lessonTitle) {
+function toContentItem(ex, level, lessonNumber, lessonTitle, skill = 'grammar') {
   return {
     level,
-    skill: 'grammar',
+    skill,
     type: ex.type,
     title: `Lesson ${lessonNumber}: ${lessonTitle} — Exercise ${ex.letter}`,
     tags: [`lesson_${lessonNumber}`, 'grammar', level.toLowerCase()],

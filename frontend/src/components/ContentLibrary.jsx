@@ -281,7 +281,7 @@ export default function ContentLibrary() {
 
     try {
       const text = await file.text();
-      const data = await api.uploadContent(text, level, false);
+      const data = await api.uploadContent(text, level, skill, false);
 
       setUploadResult({ lesson, ...data.summary });
       // Refresh from database — catches all lessons from multi-lesson files
