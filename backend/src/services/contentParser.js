@@ -59,7 +59,10 @@ function parseFormat1(text, level) {
   while (i < lines.length) {
     const line = lines[i].trim();
     const isLesson = /^lesson\s+\d+/i.test(line) ||
+                     /^vocabulary\s+lesson\s+\d+/i.test(line) ||
                      /^##\s*lesson\s+\d+/i.test(line) ||
+                     /^##\s*vocabulary\s+lesson\s+\d+/i.test(line) ||
+                     /^📘\s*(vocabulary\s+)?lesson\s+\d+/i.test(line) ||
                      /^english\s+b\d.*lesson\s+\d+/i.test(line) ||
                      /^b\d\s+english.*lesson\s+\d+/i.test(line);
     if (isLesson && !/answer key|end of/i.test(line)) {
@@ -81,14 +84,14 @@ function parseFormat1Lesson(lines, startIdx, level) {
   // "LESSON 1 — Title", "LESSON 1 | Title", "LESSON 1: Title"
   // "ENGLISH B1 — LESSON 5: Title", "B1 ENGLISH ... LESSON 3 | Title"
   // "ENGLISH B1 — LESSON 11" (title on next line)
-  const titleClean = titleLine.replace(/^##\s*/, '').trim();
-  let lessonMatch = titleClean.match(/lesson\s+(\d+)\s*[–\-—:|]\s*(.+)/i);
+  const titleClean = titleLine.replace(/^##\s*/, '').replace(/^📘\s*/, '').trim();
+  let lessonMatch = titleClean.match(/(?:vocabulary\s+)?lesson\s+(\d+)\s*[–\-—:|]\s*(.+)/i);
   if (!lessonMatch) {
-    lessonMatch = titleClean.match(/lesson\s+(\d+)[:\s]+(.+)/i);
+    lessonMatch = titleClean.match(/(?:vocabulary\s+)?lesson\s+(\d+)[:\s]+(.+)/i);
   }
   if (!lessonMatch) {
     // Title might be on next line: "ENGLISH B1 — LESSON 11"
-    lessonMatch = titleClean.match(/lesson\s+(\d+)\s*$/i);
+    lessonMatch = titleClean.match(/(?:vocabulary\s+)?lesson\s+(\d+)\s*$/i);
     if (lessonMatch) {
       // Look ahead for title on next line(s)
       let titleFromNext = '';
@@ -117,7 +120,7 @@ function parseFormat1Lesson(lines, startIdx, level) {
   while (i < lines.length) {
     const line = lines[i].trim();
 
-    if (/^lesson\s+\d+/i.test(line) && !/answer key/i.test(line) && i > startIdx + 1) break;
+    if ((/^lesson\s+\d+/i.test(line) || /^vocabulary\s+lesson\s+\d+/i.test(line) || /^📘\s*(vocabulary\s+)?lesson\s+\d+/i.test(line)) && !/answer key/i.test(line) && i > startIdx + 1) break;
     if (/answer key|answer\s*key/i.test(line)) { inAnswerKey = true; i++; continue; }
 
     if (inAnswerKey) {
@@ -311,13 +314,13 @@ function detectExerciseType(title) {
   const t = title.toLowerCase();
   if (t.includes('error correction') || t.includes('find and correct') || t.includes('correct the mistake')) return 'error_correction';
   if (t.includes('true') && t.includes('false')) return 'true_false';
-  if (t.includes('sort') || t.includes('column') || t.includes('frequency scale') || t.includes('ordering')) return 'sort';
-  if (t.includes('rewrite') || t.includes('transform') || t.includes('replace') || t.includes('join')) return 'rewrite';
-  if (t.includes('short answer') || t.includes('completion')) return 'short_answer';
-  if (t.includes('multiple choice') || t.includes('choose the correct')) return 'multiple_choice';
-  if (t.includes('fill') || t.includes('blank') || t.includes('complete')) return 'fill_blank';
-  if (t.includes('match') || t.includes('tap') || t.includes('correct article') || t.includes('correct demonstrative') || t.includes('correct form') || t.includes('correct conjunction')) return 'matching';
-  if (t.includes('unjumble') || t.includes('order') || t.includes('reorder')) return 'sentence_reorder';
+  if (t.includes('categorize') || t.includes('categorise') || t.includes('sort') || t.includes('column') || t.includes('frequency scale') || t.includes('ordering') || t.includes('odd one out')) return 'sort';
+  if (t.includes('rewrite') || t.includes('transform') || t.includes('replace') || t.includes('join') || t.includes('combine') || t.includes('sentence combine')) return 'rewrite';
+  if (t.includes('short answer') || t.includes('completion') || t.includes('form fill')) return 'short_answer';
+  if (t.includes('multiple choice') || t.includes('choose the correct') || t.includes('mime guess') || t.includes('choose correct') || t.includes('choose meaning') || t.includes('choose function') || t.includes('sentence choice') || t.includes('follow instructions') || t.includes('map task')) return 'multiple_choice';
+  if (t.includes('fill') || t.includes('blank') || t.includes('complete') || t.includes('sentence order')) return 'fill_blank';
+  if (t.includes('match') || t.includes('tap') || t.includes('drag') || t.includes('emoji') || t.includes('memory') || t.includes('opposite') || t.includes('pair') || t.includes('correct article') || t.includes('correct demonstrative') || t.includes('correct form') || t.includes('correct conjunction')) return 'matching';
+  if (t.includes('unjumble') || t.includes('reorder') || t.includes('reorder') || t.includes('drag path') || t.includes('sequence') || t.includes('put') && t.includes('order')) return 'sentence_reorder';
   return 'fill_blank';
 }
 
