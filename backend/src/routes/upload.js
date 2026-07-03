@@ -113,8 +113,9 @@ router.post('/content', async (req, res) => {
  * POST /upload/content/preview
  */
 router.post('/content/preview', async (req, res) => {
-  const { text, level } = req.body;
+  let { text, level } = req.body;
   if (!text || !level) return res.status(400).json({ error: 'text and level required' });
+  if (text) text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   try {
     const lessons = parseContentFile(text, level);
