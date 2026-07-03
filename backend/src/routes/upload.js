@@ -12,7 +12,9 @@ router.use(requireAuth, requireRole('admin', 'teacher'));
  * Body: { text, level, replace? }
  */
 router.post('/content', async (req, res) => {
-  const { text, level, skill = 'grammar', replace = false } = req.body;
+  let { text, level, skill = 'grammar', replace = false } = req.body;
+  // Normalize line endings — Windows files send \r\n which breaks regex matching
+  if (text) text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   if (!text || !level) {
     return res.status(400).json({ error: 'text and level are required' });
