@@ -33,6 +33,13 @@ router.post('/content', async (req, res) => {
 
   console.log('[upload] parsed', lessons?.length, 'lessons, level:', level, 'skill:', skill, 'text length:', text?.length);
   lessons?.forEach(l => console.log(`  L${l.lessonNumber}: ${l.lessonTitle} — ${l.contentItems?.length || 0} exercises`));
+  // Log first 200 chars and key line detection
+  const lines = text?.split('\n') || [];
+  console.log('[upload] line count:', lines.length);
+  console.log('[upload] first line:', JSON.stringify(lines[0]));
+  console.log('[upload] has Exercise A:', lines.some(l => /^Exercise\s+A/i.test(l.trim())));
+  console.log('[upload] has Answer Key:', lines.some(l => /answer key/i.test(l.trim())));
+  console.log('[upload] exercise lines:', lines.filter(l => /^Exercise\s+[A-D]/i.test(l.trim())).map(l => l.trim().slice(0,50)));
 
   if (!lessons || lessons.length === 0) {
     return res.status(400).json({ error: 'No lessons found in file. Check the format.' });
