@@ -3,16 +3,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { parseContentFile } from '../services/contentParser.js';
-import { aiParseContent } from '../services/aiParser.js';
 
 const router = Router();
 router.use(requireAuth, requireRole('admin', 'teacher'));
 
 /**
  * POST /upload/content
- * Body: { text: <file contents>, level: 'A1'|'A2'|'B1'|'B2', replace: bool }
- *
- * Parses the .txt file and inserts content items into the database.
+ * Body: { text, level, replace? }
  */
 router.post('/content', async (req, res) => {
   const { text, level, replace = false } = req.body;
@@ -26,39 +23,24 @@ router.post('/content', async (req, res) => {
     return res.status(400).json({ error: `level must be one of: ${validLevels.join(', ')}` });
   }
 
-  // Parse the file — try rule-based first, fall back to AI parser
   let lessons;
   try {
     lessons = parseContentFile(text, level);
-    // If rule-based parser found the lesson but got no exercises, use AI
-    const hasExercises = lessons.some(l => l.contentItems?.length > 0);
-    if ((!lessons || lessons.length === 0 || !hasExercises) && process.env.ANTHROPIC_API_KEY) {
-      console.log('[upload] Rule-based parser found no exercises, trying AI parser...');
-      lessons = await aiParseContent(text, level, process.env.ANTHROPIC_API_KEY);
-    }
   } catch (err) {
     console.error('[upload/parse]', err);
-    // Last resort: try AI parser
-    try {
-      if (process.env.ANTHROPIC_API_KEY) {
-        lessons = await aiParseContent(text, level, process.env.ANTHROPIC_API_KEY);
-      }
-    } catch (aiErr) {
-      return res.status(400).json({ error: `Failed to parse file: ${err.message}` });
-    }
+    return res.status(400).json({ error: `Failed to parse file: ${err.message}` });
   }
 
   if (!lessons || lessons.length === 0) {
     return res.status(400).json({ error: 'No lessons found in file. Check the format.' });
   }
 
-  const allItems = lessons.flatMap(l => l.contentItems);
+  const allItems = lessons.flatMap(l => l.contentItems || []);
 
   if (allItems.length === 0) {
     return res.status(400).json({ error: 'No exercises could be parsed from the file.' });
   }
 
-  // If replace=true, delete existing content for this school+level+skill
   if (replace) {
     await query(
       `DELETE FROM content_items WHERE school_id = $1 AND level = $2 AND skill = 'grammar'`,
@@ -66,7 +48,6 @@ router.post('/content', async (req, res) => {
     );
   }
 
-  // Insert all parsed items
   let inserted = 0;
   const errors = [];
 
@@ -76,14 +57,9 @@ router.post('/content', async (req, res) => {
         `INSERT INTO content_items (id, school_id, level, skill, type, title, tags, body)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
-          uuidv4(),
-          req.school.id,
-          item.level,
-          item.skill,
-          item.type,
-          item.title,
-          item.tags,
-          JSON.stringify(item.body),
+          uuidv4(), req.school.id,
+          item.level, item.skill, item.type, item.title,
+          item.tags || [], JSON.stringify(item.body),
         ]
       );
       inserted++;
@@ -102,16 +78,14 @@ router.post('/content', async (req, res) => {
     lessons: lessons.map(l => ({
       number: l.lessonNumber,
       title: l.lessonTitle,
-      exercises: l.contentItems.length,
+      exercises: l.contentItems?.length || 0,
     })),
     errors,
   });
 });
 
 /**
- * GET /upload/content/preview
- * Preview parsed content without saving — useful for checking before committing
- * Body: { text, level }
+ * POST /upload/content/preview
  */
 router.post('/content/preview', async (req, res) => {
   const { text, level } = req.body;
@@ -123,12 +97,12 @@ router.post('/content/preview', async (req, res) => {
       lessons: lessons.map(l => ({
         number: l.lessonNumber,
         title: l.lessonTitle,
-        exercises: l.contentItems.map(c => ({
+        exercises: l.contentItems?.map(c => ({
           title: c.title,
           type: c.type,
-          item_count: c.body.items?.length || 0,
-          sample: c.body.items?.[0] || null,
-        })),
+          item_count: c.body?.items?.length || 0,
+          sample: c.body?.items?.[0] || null,
+        })) || [],
       })),
     });
   } catch (err) {
@@ -137,7 +111,7 @@ router.post('/content/preview', async (req, res) => {
 });
 
 /**
- * GET /upload/content/list — list uploaded content by level
+ * GET /upload/content/list
  */
 router.get('/content/list', async (req, res) => {
   const { level } = req.query;
@@ -160,7 +134,7 @@ router.get('/content/list', async (req, res) => {
 });
 
 /**
- * DELETE /upload/content — delete all content for a level
+ * DELETE /upload/content
  */
 router.delete('/content', async (req, res) => {
   const { level, skill = 'grammar' } = req.body;
@@ -173,12 +147,39 @@ router.delete('/content', async (req, res) => {
   res.json({ deleted: rowCount });
 });
 
-export default router;
+/**
+ * GET /upload/lessons
+ */
+router.get('/lessons', async (req, res) => {
+  const { level, skill = 'grammar' } = req.query;
+  if (!level) return res.status(400).json({ error: 'level required' });
+
+  const { rows } = await query(
+    `SELECT DISTINCT
+       CAST(REGEXP_REPLACE(title, '.*Lesson\\s+(\\d+).*', '\\1') AS INTEGER) AS lesson_number,
+       COUNT(*) AS exercise_count
+     FROM content_items
+     WHERE school_id = $1
+       AND level = $2
+       AND skill = $3
+       AND title ~ 'Lesson\\s+\\d+'
+       AND is_active = true
+     GROUP BY lesson_number
+     ORDER BY lesson_number`,
+    [req.school.id, level, skill]
+  );
+
+  res.json({
+    level, skill,
+    uploaded_lessons: rows.map(r => ({
+      lesson_number: r.lesson_number,
+      exercise_count: parseInt(r.exercise_count)
+    }))
+  });
+});
 
 /**
  * POST /upload/bulk
- * Direct insert of pre-parsed content items (used by bulk upload scripts).
- * Body: { items: [{ level, skill, type, title, tags, body }], replace_level? }
  */
 router.post('/bulk', async (req, res) => {
   const { items, replace_level } = req.body;
@@ -199,16 +200,11 @@ router.post('/bulk', async (req, res) => {
 
   for (const item of items) {
     try {
+      const { v4 } = await import('uuid');
       await query(
         `INSERT INTO content_items (id, school_id, level, skill, type, title, tags, body)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          (await import('uuid')).v4(),
-          req.school.id,
-          item.level, item.skill, item.type, item.title,
-          item.tags || [],
-          JSON.stringify(item.body),
-        ]
+        [v4(), req.school.id, item.level, item.skill, item.type, item.title, item.tags || [], JSON.stringify(item.body)]
       );
       inserted++;
     } catch (err) {
@@ -216,18 +212,11 @@ router.post('/bulk', async (req, res) => {
     }
   }
 
-  res.status(201).json({
-    success: true,
-    inserted,
-    errors: errors.length,
-    error_details: errors,
-  });
+  res.status(201).json({ success: true, inserted, errors: errors.length, error_details: errors });
 });
 
 /**
  * DELETE /upload/level
- * Wipe all content for a specific level + skill.
- * Used for cleanup before re-uploading.
  */
 router.delete('/level', async (req, res) => {
   const { level, skill = 'grammar' } = req.body;
@@ -240,40 +229,4 @@ router.delete('/level', async (req, res) => {
   res.json({ deleted: rowCount, level, skill });
 });
 
-/**
- * GET /upload/lessons
- * Returns which lesson numbers have content in the database for a given level+skill.
- * Used by Content Library to show green checkmarks accurately.
- */
-router.get('/lessons', async (req, res) => {
-  const { level, skill = 'grammar' } = req.query;
-  if (!level) return res.status(400).json({ error: 'level required' });
-
-  const { rows } = await query(
-    `SELECT DISTINCT
-       -- Extract lesson number from title pattern "Lesson N: ..."
-       CAST(
-         REGEXP_REPLACE(title, '.*Lesson\\s+(\\d+).*', '\\1')
-         AS INTEGER
-       ) AS lesson_number,
-       COUNT(*) AS exercise_count
-     FROM content_items
-     WHERE school_id = $1
-       AND level = $2
-       AND skill = $3
-       AND title ~ 'Lesson\\s+\\d+'
-       AND is_active = true
-     GROUP BY lesson_number
-     ORDER BY lesson_number`,
-    [req.school.id, level, skill]
-  );
-
-  res.json({
-    level,
-    skill,
-    uploaded_lessons: rows.map(r => ({
-      lesson_number: r.lesson_number,
-      exercise_count: parseInt(r.exercise_count)
-    }))
-  });
-});
+export default router;
