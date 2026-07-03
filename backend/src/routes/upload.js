@@ -239,3 +239,41 @@ router.delete('/level', async (req, res) => {
   );
   res.json({ deleted: rowCount, level, skill });
 });
+
+/**
+ * GET /upload/lessons
+ * Returns which lesson numbers have content in the database for a given level+skill.
+ * Used by Content Library to show green checkmarks accurately.
+ */
+router.get('/lessons', async (req, res) => {
+  const { level, skill = 'grammar' } = req.query;
+  if (!level) return res.status(400).json({ error: 'level required' });
+
+  const { rows } = await query(
+    `SELECT DISTINCT
+       -- Extract lesson number from title pattern "Lesson N: ..."
+       CAST(
+         REGEXP_REPLACE(title, '.*Lesson\\s+(\\d+).*', '\\1')
+         AS INTEGER
+       ) AS lesson_number,
+       COUNT(*) AS exercise_count
+     FROM content_items
+     WHERE school_id = $1
+       AND level = $2
+       AND skill = $3
+       AND title ~ 'Lesson\\s+\\d+'
+       AND is_active = true
+     GROUP BY lesson_number
+     ORDER BY lesson_number`,
+    [req.school.id, level, skill]
+  );
+
+  res.json({
+    level,
+    skill,
+    uploaded_lessons: rows.map(r => ({
+      lesson_number: r.lesson_number,
+      exercise_count: parseInt(r.exercise_count)
+    }))
+  });
+});

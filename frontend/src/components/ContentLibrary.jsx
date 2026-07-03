@@ -205,31 +205,41 @@ export default function ContentLibrary() {
   const [skill, setSkill] = useState('grammar');
   const [level, setLevel] = useState('A1');
   const [uploaded, setUploaded] = useState({}); // key: "skill-level-lessonNum" → true
-  const [uploading, setUploading] = useState(null); // lesson number currently uploading
+  const [uploading, setUploading] = useState(null);
   const [uploadResult, setUploadResult] = useState(null);
   const [error, setError] = useState('');
   const fileRef = useRef();
   const pendingLesson = useRef(null);
 
-  // Load what's already uploaded from the database
+  // Load uploaded lesson numbers from the database whenever skill/level changes
   useEffect(() => {
-    api.listUploadedContent()
+    setUploaded({});
+    api.getUploadedLessons(level, skill)
       .then(data => {
         const map = {};
-        // data.content is grouped by level/skill — mark those as uploaded
-        (data.content || []).forEach(row => {
-          // We mark the level+skill as having content (per-lesson tracking comes later)
-          map[`${row.skill}-${row.level}`] = parseInt(row.count);
+        (data.uploaded_lessons || []).forEach(row => {
+          map[`${skill}-${level}-${row.lesson_number}`] = true;
         });
         setUploaded(map);
       })
       .catch(() => {});
-  }, []);
+  }, [skill, level]);
+
+  // Reload after a successful upload
+  async function refreshUploadedStatus() {
+    try {
+      const data = await api.getUploadedLessons(level, skill);
+      const map = {};
+      (data.uploaded_lessons || []).forEach(row => {
+        map[`${skill}-${level}-${row.lesson_number}`] = true;
+      });
+      setUploaded(map);
+    } catch {}
+  }
 
   const lessons = CATALOGUE[skill]?.[level] || [];
-  const uploadedCount = Object.entries(uploaded)
-    .filter(([k]) => k.startsWith(`${skill}-${level}`))
-    .reduce((s, [,v]) => s + v, 0);
+  const uploadedLessons = lessons.filter(l => !!uploaded[`${skill}-${level}-${l.number}`]).length;
+  const progress = lessons.length > 0 ? Math.round((uploadedLessons / lessons.length) * 100) : 0;
 
   function openFilePicker(lesson) {
     pendingLesson.current = lesson;
@@ -253,12 +263,8 @@ export default function ContentLibrary() {
       const data = await api.uploadContent(text, level, false);
 
       setUploadResult({ lesson, ...data.summary });
-      // Mark this lesson as uploaded
-      setUploaded(u => ({
-        ...u,
-        [`${skill}-${level}-${lesson.number}`]: true,
-        [`${skill}-${level}`]: (u[`${skill}-${level}`] || 0) + data.summary.exercises_inserted,
-      }));
+      // Refresh from database — catches all lessons from multi-lesson files
+      await refreshUploadedStatus();
     } catch (err) {
       setError(`Lesson ${lesson.number}: ${err.message}`);
     } finally {
@@ -272,8 +278,6 @@ export default function ContentLibrary() {
   }
 
   const totalLessons = lessons.length;
-  const uploadedLessons = lessons.filter(isUploaded).length;
-  const progress = totalLessons > 0 ? Math.round((uploadedLessons / totalLessons) * 100) : 0;
 
   return (
     <div className="p-8 max-w-5xl">

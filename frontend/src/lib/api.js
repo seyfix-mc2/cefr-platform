@@ -129,3 +129,5 @@ export function clearToken() {
   localStorage.removeItem('token');
   localStorage.removeItem('school_slug');
 }
+
+api.getUploadedLessons = (level, skill) => request(`/upload/lessons?level=${level}&skill=${skill || 'grammar'}`);
