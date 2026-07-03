@@ -230,3 +230,26 @@ router.delete('/level', async (req, res) => {
 });
 
 export default router;
+
+/**
+ * POST /upload/debug — test parser without saving (temporary debug endpoint)
+ */
+router.post('/debug', async (req, res) => {
+  const { text, level } = req.body;
+  if (!text || !level) return res.status(400).json({ error: 'text and level required' });
+  try {
+    const { parseContentFile } = await import('../services/contentParser.js');
+    const lessons = parseContentFile(text, level);
+    res.json({
+      lessons_found: lessons.length,
+      lessons: lessons.map(l => ({
+        number: l.lessonNumber,
+        title: l.lessonTitle,
+        exercises: l.contentItems?.length || 0,
+        exercise_detail: l.contentItems?.map(ci => `${ci.exercise_letter}:${ci.type}(${ci.body?.items?.length})`)
+      }))
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message, stack: err.stack?.split('\n').slice(0,5) });
+  }
+});
