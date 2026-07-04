@@ -305,6 +305,7 @@ function LoginPage({ onLogin }) {
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Language Learning Platform</h1>
           <p className="text-sm text-gray-500 mt-1">Sign in to continue</p>
+          <p className="text-xs text-gray-300 mt-1">v2.3</p>
         </div>
 
         <Card className="p-8">
