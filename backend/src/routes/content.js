@@ -10,7 +10,7 @@ router.use(requireAuth);
  * Query params: level, skill, type, limit, offset
  */
 router.get('/', async (req, res) => {
-  const { level, skill, type, limit = 20, offset = 0 } = req.query;
+  const { level, skill, type, limit = 500, offset = 0 } = req.query;
   const params = [req.school.id];
   const conditions = ['(ci.school_id = $1 OR ci.school_id IS NULL)', 'ci.is_active = true'];
 
@@ -24,7 +24,10 @@ router.get('/', async (req, res) => {
     `SELECT ci.id, ci.level, ci.skill, ci.type, ci.title, ci.tags, ci.body
      FROM content_items ci
      WHERE ${conditions.join(' AND ')}
-     ORDER BY ci.level, ci.skill, ci.created_at
+     ORDER BY ci.level, ci.skill,
+       -- Sort by lesson number extracted from title
+       CAST(REGEXP_REPLACE(ci.title, '.*Lesson\\s+(\\d+).*', '\\1', 'i') AS INTEGER) NULLS LAST,
+       ci.title
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
