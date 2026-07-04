@@ -638,6 +638,24 @@ function parseMarkdownItems(lines, type, answers) {
 // Or fill blank: "N. sentence with _____  | ANSWER: word"
 // ─────────────────────────────────────────────────────────────
 function parseFormat4(text, level, skill = 'grammar') {
+  // Handle multiple lessons in one file - split on lesson headers
+  const lessonChunks = text.split(/(?=^\s*Lesson\s+\d+[:\s–\-—])/im)
+    .filter(c => /^Lesson\s+\d+[:\s–\-—]/im.test(c));
+  
+  if (lessonChunks.length > 1) {
+    const allLessons = [];
+    for (const chunk of lessonChunks) {
+      const result = parseFormat4Single(chunk, level, skill);
+      if (result && result[0]?.contentItems?.length > 0) {
+        allLessons.push(...result);
+      }
+    }
+    return allLessons;
+  }
+  return parseFormat4Single(text, level, skill);
+}
+
+function parseFormat4Single(text, level, skill = 'grammar') {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   
   // Find lesson header
