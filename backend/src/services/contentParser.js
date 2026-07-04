@@ -34,10 +34,13 @@ export function parseContentFile(text, level, skill = 'grammar') {
   }
 
   // Format 4: B2 inline pipe format 
-  // Only trigger if exercises use numbers (Exercise 1, 2, 3) not letters (Exercise A, B, C)
-  // AND has pipe-answer pattern throughout
+  // Trigger if exercises use numbers (Exercise 1, 2, 3) not letters (Exercise A, B, C)
   if (/\|\s*ANSWER:/i.test(normalized) && /^Exercise\s+\d+\s*[–\-—|]/im.test(normalized)) {
     return parseFormat4(normalized, level, skill);
+  }
+  // Also trigger for numbered exercises with colon: "EXERCISE 1: Type"
+  if (/^EXERCISE\s+\d+\s*:/m.test(normalized)) {
+    return parseFormat4(normalized, level, skill || 'grammar');
   }
 
   // Format 1: has "Lesson N" headers (any style including indented or embedded)
@@ -128,7 +131,9 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
 
     // Only enter global answer key mode for final answer key section (e.g. "Answer Key – Lesson 2")
     // NOT for inline per-exercise answer keys like "Answer Key: 1-d, 2-e" or standalone "Answer Key:"
-    const isStandaloneAK = /^answer key\s*[–\-—]\s*lesson/i.test(line);
+    const isStandaloneAK = /^answer key\s*[–\-—]\s*lesson/i.test(line) ||
+                            (line.trim().toLowerCase() === 'answer key') ||
+                            /^answer key\s*$/i.test(line);
     if (isStandaloneAK) { inAnswerKey = true; i++; continue; }
 
     if (inAnswerKey) {
@@ -142,7 +147,7 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
 
     // Skip "EXERCISE A — ANSWER KEY" lines — these are in the answer section
     if (/^exercise\s+[A-G].*answer\s*key/i.test(line)) { i++; continue; }
-    const exHeaderMatch = line.match(/^exercise\s+([A-G])\s*[–\-—:|]\s*(.+)/i);
+    const exHeaderMatch = line.match(/^exercise\s+([A-G])\s*[–\-—:|\|]\s*(.+)/i);
     if (exHeaderMatch) {
       if (currentExercise) exercises.push(currentExercise);
       currentExercise = {
@@ -632,7 +637,7 @@ function parseMarkdownItems(lines, type, answers) {
 // Each item: "N. prompt | A. opt  B. opt | ANSWER: X"
 // Or fill blank: "N. sentence with _____  | ANSWER: word"
 // ─────────────────────────────────────────────────────────────
-function parseFormat4(text, level) {
+function parseFormat4(text, level, skill = 'grammar') {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   
   // Find lesson header
@@ -657,7 +662,7 @@ function parseFormat4(text, level) {
     }
 
     // Exercise header: "Exercise N – Type" or "Exercise N"
-    const exM = line.match(/^Exercise\s+(\d+)\s*[–\-—|:]?\s*(.*)/i);
+    const exM = line.match(/^Exercise\s+(\d+)\s*[–\-—|:]?\s*(.*)/i) || line.match(/^EXERCISE\s+(\d+)\s*[:\-—|]\s*(.*)/i);
     if (exM) {
       if (currentExercise) exercises.push(currentExercise);
       const exNum = parseInt(exM[1]);
