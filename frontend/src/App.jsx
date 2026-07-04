@@ -1312,7 +1312,7 @@ function MultipleChoiceExercise({ item, onNext }) {
         <div className="mt-6 p-4 rounded-xl text-center" style={{ background: score >= 80 ? "#f0fdf4" : score >= 60 ? "#fffbeb" : "#fef2f2" }}>
           <div className="text-3xl font-bold mb-1" style={{ color: score >= 80 ? "#16a34a" : score >= 60 ? "#d97706" : "#dc2626" }}>{score}%</div>
           <div className="text-sm text-gray-600">{score >= 80 ? "Excellent work! 🎉" : score >= 60 ? "Good effort! Review the explanations." : "Keep practising — you'll get there!"}</div>
-          {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise →</button>}
+          {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
         </div>
       )}
     </Card>
@@ -1357,7 +1357,7 @@ function FillBlankExercise({ item, onNext }) {
         <div className="mt-6 p-4 rounded-xl bg-indigo-50 text-center">
           <div className="text-2xl font-bold text-indigo-700">{score}%</div>
           <div className="text-sm text-gray-600 mt-1">{score >= 80 ? "Great job!" : "Review the correct answers above."}</div>
-          {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise →</button>}
+          {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
         </div>
       )}
     </Card>
@@ -1428,7 +1428,7 @@ function MatchingExercise({ item, onNext }) {
         <div className="p-4 rounded-xl bg-indigo-50 text-center">
           <div className="text-2xl font-bold text-indigo-700">{score}%</div>
           <div className="text-sm text-gray-600 mt-1">{score === 100 ? "Perfect match! 🎉" : "Check the highlighted answers."}</div>
-          {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise →</button>}
+          {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
         </div>
       )}
     </Card>
