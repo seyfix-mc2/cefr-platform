@@ -1217,12 +1217,8 @@ function ContentList({ skill, level, onSelect }) {
 // ─────────────────────────────────────────────────────────────
 
 function ExerciseView({ item, onBack }) {
-  // Support multi-exercise lessons (vocabulary style)
   const exercises = item._lessonExercises || [item];
-  console.log('ExerciseView: exercises count =', exercises.length, '_lessonExercises =', item._lessonExercises?.length);
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const currentItem = exercises[currentIdx];
-  const lessonTitle = item._lessonTitle || currentItem.title;
+  const lessonTitle = item._lessonTitle || item.title?.replace(/\s*[—\-]\s*Exercise.*$/i, '').replace(/Lesson\s+\d+[:\s]+/i, '').trim();
 
   const typeComponents = {
     multiple_choice: MultipleChoiceExercise,
@@ -1234,37 +1230,33 @@ function ExerciseView({ item, onBack }) {
     picture_description: PictureDescriptionExercise,
   };
 
-  const Component = typeComponents[currentItem.type];
-  const exLetter = currentItem.title?.match(/Exercise\s+([A-G])/i)?.[1] || String.fromCharCode(65 + currentIdx);
-
   return (
     <div className="p-8 max-w-3xl">
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-6">
         ← Back
       </button>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3">
-          <CEFRBadge level={currentItem.level} />
-          <h1 className="text-xl font-bold text-gray-900">{lessonTitle}</h1>
-        </div>
-        {exercises.length > 1 && (
-          <span className="text-sm text-gray-400">{currentIdx + 1} / {exercises.length}</span>
-        )}
+      <div className="flex items-center gap-3 mb-8">
+        <CEFRBadge level={exercises[0]?.level} />
+        <h1 className="text-xl font-bold text-gray-900">{lessonTitle}</h1>
       </div>
-      {exercises.length > 1 && (
-        <div className="flex gap-1 mb-6">
-          {exercises.map((_, i) => (
-            <button key={i} onClick={() => setCurrentIdx(i)}
-              className={`h-1.5 rounded-full flex-1 transition-all ${i === currentIdx ? 'bg-indigo-500' : i < currentIdx ? 'bg-green-400' : 'bg-gray-200'}`} />
-          ))}
-        </div>
-      )}
-      <div className="text-sm font-medium text-indigo-600 mb-4">Exercise {exLetter}</div>
-      {Component ? (
-        <Component item={currentItem} onNext={currentIdx < exercises.length - 1 ? () => setCurrentIdx(i => i + 1) : null} />
-      ) : (
-        <div className="text-gray-500">Exercise type "{currentItem.type}" not yet implemented.</div>
-      )}
+      <div className="space-y-10">
+        {exercises.map((ex, idx) => {
+          const Component = typeComponents[ex.type];
+          const exLetter = ex.title?.match(/Exercise\s+([A-G])/i)?.[1] || String.fromCharCode(65 + idx);
+          return (
+            <div key={ex.id || idx}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold">{exLetter}</span>
+                <span className="text-sm font-medium text-gray-500 capitalize">{ex.type.replace(/_/g, ' ')}</span>
+              </div>
+              {Component
+                ? <Component item={ex} onNext={null} />
+                : <div className="text-gray-400 text-sm italic">Exercise type not yet supported.</div>
+              }
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
