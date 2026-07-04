@@ -181,10 +181,11 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
         const optionsPart = parts.find(p => /^[A-D][.)]/i.test(p));
 
         if (optionsPart) {
-          // Multiple choice: has A. B. C. options
-          const options = [];
-          const optMatches = optionsPart.matchAll(/([A-D])[.)\s]+([^A-D|]+?)(?=[A-D][.)]|\||$)/gi);
-          for (const m of optMatches) options.push(m[2].trim());
+          // Multiple choice: has A. B. C. options — split on letter+dot boundaries
+          const options = optionsPart
+            .split(/\s+(?=[A-D]\.)/i)
+            .map(o => o.replace(/^[A-D]\.\s*/i, '').trim())
+            .filter(Boolean);
           const correctLetter = answer.replace(/[^A-D]/gi, '').toUpperCase();
           const correctIdx = correctLetter ? correctLetter.charCodeAt(0) - 65 : 0;
           currentExercise.items.push({ id: num, prompt, options, correct: correctIdx, answer: correctLetter });
