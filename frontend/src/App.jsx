@@ -1,7 +1,7 @@
 import ContentUpload from "./components/ContentUpload.jsx";
 import ContentLibrary from "./components/ContentLibrary.jsx";
 import { api } from "./lib/api.js";
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, useMemo, createContext, useContext } from "react";
 
 // ─────────────────────────────────────────────────────────────
 // MOCK API (simulates backend for standalone demo)
@@ -1117,18 +1117,36 @@ function ContentList({ skill, level, onSelect }) {
   useEffect(() => {
     setLoading(true);
     setError("");
-    api.getContent({ skill, level })
+    api.getContent({ skill, level, limit: 200 })
       .then(data => setItems(data.items || []))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [skill, level]);
+
+  // Group items by lesson number extracted from title "Lesson N: ..."
+  const lessons = useMemo(() => {
+    const map = {};
+    items.forEach(item => {
+      const m = item.title?.match(/Lesson\s+(\d+)/i);
+      const num = m ? parseInt(m[1]) : 0;
+      if (!map[num]) map[num] = { number: num, title: item.title?.replace(/\s*—\s*Exercise.*$/i, '').replace(/Lesson\s+\d+:\s*/i, '').trim() || item.title, exercises: [] };
+      map[num].exercises.push(item);
+    });
+    return Object.values(map).sort((a, b) => a.number - b.number);
+  }, [items]);
+
+  // If only 1 exercise type per lesson (grammar style), show individual exercises
+  // If multiple exercises per lesson (vocabulary style), show grouped lessons
+  const showGrouped = lessons.some(l => l.exercises.length > 1);
 
   return (
     <div className="p-8 max-w-3xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-1 capitalize">{skill}</h1>
       <div className="flex items-center gap-2 mb-8">
         <CEFRBadge level={level} />
-        <span className="text-sm text-gray-500">{loading ? "Loading…" : `${items.length} exercises available`}</span>
+        <span className="text-sm text-gray-500">
+          {loading ? "Loading…" : showGrouped ? `${lessons.length} lessons` : `${items.length} exercises`}
+        </span>
       </div>
 
       {loading && (
@@ -1143,20 +1161,44 @@ function ContentList({ skill, level, onSelect }) {
 
       {!loading && !error && (
         <div className="space-y-3">
-          {items.map(item => (
-            <Card key={item.id} className="p-5 hover:border-indigo-300 transition-colors cursor-pointer" onClick={() => onSelect(item)}>
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-xl">
-                  {icons[item.skill] || "📚"}
+          {showGrouped ? (
+            // Vocabulary style: one card per lesson, click opens first exercise
+            lessons.map(lesson => (
+              <Card key={lesson.number} className="p-5 hover:border-indigo-300 transition-colors cursor-pointer"
+                onClick={() => onSelect({ ...lesson.exercises[0], _lessonExercises: lesson.exercises, _lessonTitle: lesson.title })}>
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-xl">
+                    {icons[skill] || "📚"}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900">
+                      Lesson {lesson.number} — {lesson.title}
+                    </div>
+                    <div className="text-sm text-gray-500 mt-0.5">
+                      {lesson.exercises.length} exercises
+                    </div>
+                  </div>
+                  <span className="text-gray-300 text-lg">→</span>
                 </div>
-                <div className="flex-1">
-                  <div className="font-semibold text-gray-900">{item.title}</div>
-                  <div className="text-sm text-gray-500 mt-0.5 capitalize">{item.type.replace("_", " ")}</div>
+              </Card>
+            ))
+          ) : (
+            // Grammar style: one card per exercise
+            items.map(item => (
+              <Card key={item.id} className="p-5 hover:border-indigo-300 transition-colors cursor-pointer" onClick={() => onSelect(item)}>
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-xl">
+                    {icons[item.skill] || "📚"}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900">{item.title}</div>
+                    <div className="text-sm text-gray-500 mt-0.5 capitalize">{item.type.replace("_", " ")}</div>
+                  </div>
+                  <span className="text-gray-300 text-lg">→</span>
                 </div>
-                <span className="text-gray-300 text-lg">→</span>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            ))
+          )}
           {items.length === 0 && (
             <EmptyState icon="📚" title="No exercises yet" description="Content for this level and skill is coming soon." />
           )}
@@ -1171,6 +1213,12 @@ function ContentList({ skill, level, onSelect }) {
 // ─────────────────────────────────────────────────────────────
 
 function ExerciseView({ item, onBack }) {
+  // Support multi-exercise lessons (vocabulary style)
+  const exercises = item._lessonExercises || [item];
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const currentItem = exercises[currentIdx];
+  const lessonTitle = item._lessonTitle || currentItem.title;
+
   const typeComponents = {
     multiple_choice: MultipleChoiceExercise,
     fill_blank: FillBlankExercise,
@@ -1181,23 +1229,42 @@ function ExerciseView({ item, onBack }) {
     picture_description: PictureDescriptionExercise,
   };
 
-  const Component = typeComponents[item.type];
+  const Component = typeComponents[currentItem.type];
+  const exLetter = currentItem.title?.match(/Exercise\s+([A-G])/i)?.[1] || String.fromCharCode(65 + currentIdx);
 
   return (
     <div className="p-8 max-w-3xl">
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-6">
         ← Back
       </button>
-      <div className="flex items-center gap-3 mb-6">
-        <CEFRBadge level={item.level} />
-        <h1 className="text-xl font-bold text-gray-900">{item.title}</h1>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <CEFRBadge level={currentItem.level} />
+          <h1 className="text-xl font-bold text-gray-900">{lessonTitle}</h1>
+        </div>
+        {exercises.length > 1 && (
+          <span className="text-sm text-gray-400">{currentIdx + 1} / {exercises.length}</span>
+        )}
       </div>
-      {Component ? <Component item={item} /> : <div className="text-gray-500">Exercise type "{item.type}" not yet implemented.</div>}
+      {exercises.length > 1 && (
+        <div className="flex gap-1 mb-6">
+          {exercises.map((_, i) => (
+            <button key={i} onClick={() => setCurrentIdx(i)}
+              className={`h-1.5 rounded-full flex-1 transition-all ${i === currentIdx ? 'bg-indigo-500' : i < currentIdx ? 'bg-green-400' : 'bg-gray-200'}`} />
+          ))}
+        </div>
+      )}
+      <div className="text-sm font-medium text-indigo-600 mb-4">Exercise {exLetter}</div>
+      {Component ? (
+        <Component item={currentItem} onNext={currentIdx < exercises.length - 1 ? () => setCurrentIdx(i => i + 1) : null} />
+      ) : (
+        <div className="text-gray-500">Exercise type "{currentItem.type}" not yet implemented.</div>
+      )}
     </div>
   );
 }
 
-function MultipleChoiceExercise({ item }) {
+function MultipleChoiceExercise({ item, onNext }) {
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const { items, instructions } = item.body;
@@ -1245,13 +1312,14 @@ function MultipleChoiceExercise({ item }) {
         <div className="mt-6 p-4 rounded-xl text-center" style={{ background: score >= 80 ? "#f0fdf4" : score >= 60 ? "#fffbeb" : "#fef2f2" }}>
           <div className="text-3xl font-bold mb-1" style={{ color: score >= 80 ? "#16a34a" : score >= 60 ? "#d97706" : "#dc2626" }}>{score}%</div>
           <div className="text-sm text-gray-600">{score >= 80 ? "Excellent work! 🎉" : score >= 60 ? "Good effort! Review the explanations." : "Keep practising — you'll get there!"}</div>
+          {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise →</button>}
         </div>
       )}
     </Card>
   );
 }
 
-function FillBlankExercise({ item }) {
+function FillBlankExercise({ item, onNext }) {
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const { items, instructions } = item.body;
@@ -1295,7 +1363,7 @@ function FillBlankExercise({ item }) {
   );
 }
 
-function MatchingExercise({ item }) {
+function MatchingExercise({ item, onNext }) {
   const { items, instructions } = item.body;
   const [matches, setMatches] = useState({});
   const [selected, setSelected] = useState(null);
@@ -1365,7 +1433,7 @@ function MatchingExercise({ item }) {
   );
 }
 
-function SentenceReorderExercise({ item }) {
+function SentenceReorderExercise({ item, onNext }) {
   const { items, instructions } = item.body;
   const [order, setOrder] = useState(() =>
     Object.fromEntries(items.map(q => [q.id, shuffleWords(q.words)]))

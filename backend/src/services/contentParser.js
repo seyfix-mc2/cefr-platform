@@ -20,7 +20,7 @@
  *   Answers: 1. Full sentence. 2. Full sentence.
  */
 
-// CEFR Content Parser v2.1 — supports Formats 1-4
+// CEFR Content Parser v2.2 — supports Formats 1-4, options fix, A-G exercises
 // Last updated: inline Answer Key support, Exercise D, multi-lesson markdown
 export function parseContentFile(text, level, skill = 'grammar') {
   // Normalize line endings and collapse wrapped lines
