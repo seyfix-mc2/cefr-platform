@@ -38,8 +38,8 @@ export function parseContentFile(text, level, skill = 'grammar') {
   if (/\|\s*ANSWER:/i.test(normalized) && /^Exercise\s+\d+\s*[–\-—|]/im.test(normalized)) {
     return parseFormat4(normalized, level, skill);
   }
-  // Also trigger for numbered exercises with colon: "EXERCISE 1: Type"
-  if (/^EXERCISE\s+\d+\s*:/m.test(normalized)) {
+  // Also trigger for numbered exercises with colon/dash (handles indented headers)
+  if (/^\s*EXERCISE\s+\d+\s*[:\-—]/m.test(normalized)) {
     return parseFormat4(normalized, level, skill || 'grammar');
   }
 
@@ -639,8 +639,8 @@ function parseMarkdownItems(lines, type, answers) {
 // ─────────────────────────────────────────────────────────────
 function parseFormat4(text, level, skill = 'grammar') {
   // Handle multiple lessons in one file - split on lesson headers
-  const lessonChunks = text.split(/(?=^\s*Lesson\s+\d+[:\s–\-—])/im)
-    .filter(c => /^Lesson\s+\d+[:\s–\-—]/im.test(c));
+  const lessonChunks = text.split(/(?=^\s*Lesson\s+\d+[:\s–\-—]|^\s*LESSON\s+\d+[:\s–\-—])/im)
+    .filter(c => /^\s*(?:Lesson|LESSON)\s+\d+[:\s–\-—]/im.test(c));
   
   if (lessonChunks.length > 1) {
     const allLessons = [];
@@ -667,20 +667,27 @@ function parseFormat4Single(text, level, skill = 'grammar') {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Lesson header: "Lesson N – Title" or "Lesson N"
-    const lessonM = line.match(/^Lesson\s+(\d+)\s*[–\-—|:]?\s*(.*)/i);
-    if (lessonM && !/exercise/i.test(line)) {
+    // Lesson header: "Lesson N – Title" or "Lesson N" (handles all caps, answer key lines)
+    const lessonM = line.match(/^(?:Lesson|LESSON)\s+(\d+)\s*[–\-—|:]?\s*(.*)/i);
+    if (lessonM && !/exercise|answer key/i.test(line)) {
       lessonNumber = parseInt(lessonM[1]);
-      lessonTitle = lessonM[2].trim() || '';
-      // If title is on next line
-      if (!lessonTitle && lines[i+1] && !/^exercise/i.test(lines[i+1])) {
+      lessonTitle = lessonM[2].trim()
+        .replace(/\(.*?\)/g, '').trim() // remove parenthetical subtitles
+        .replace(/^[–\-—:]\s*/, '').trim(); // remove leading dashes
+      // If title is empty or looks like a subtitle, check next line
+      if (!lessonTitle && lines[i+1] && !/^exercise/i.test(lines[i+1]) && !/^\d+\./.test(lines[i+1])) {
         lessonTitle = lines[i+1].trim();
       }
       continue;
     }
 
     // Exercise header: "Exercise N – Type" or "Exercise N"
-    const exM = line.match(/^Exercise\s+(\d+)\s*[–\-—|:]?\s*(.*)/i) || line.match(/^EXERCISE\s+(\d+)\s*[:\-—|]\s*(.*)/i);
+    // Strip leading spaces and "--- " prefixes before matching
+    const stripped = line.replace(/^[\s\-]+/, '').trim();
+    const exM = stripped.match(/^Exercise\s+(\d+)\s*[–\-—|:]?\s*(.*)/i) || 
+                stripped.match(/^EXERCISE\s+(\d+)\s*[:\-—|]\s*(.*)/i);
+    // Skip answer key exercise headers: "--- EXERCISE 1 --- answer1, answer2"
+    if (exM && /---/.test(line)) { i++; continue; }
     if (exM) {
       if (currentExercise) exercises.push(currentExercise);
       const exNum = parseInt(exM[1]);
