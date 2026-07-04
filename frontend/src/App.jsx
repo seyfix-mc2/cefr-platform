@@ -1367,20 +1367,45 @@ function MatchingExercise({ item, onNext }) {
   const [selected, setSelected] = useState(null);
   const [submitted, setSubmitted] = useState(false);
 
-  const shuffledDefs = [...items].sort(() => Math.random() - 0.5);
+  // Build unique definitions list from all items (deduplicated by definition text)
+  // Each definition has an id (the item id it came from) for tracking
+  const allDefs = [];
+  const seen = new Set();
+  [...items].sort(() => Math.random() - 0.5).forEach(i => {
+    if (i.definition && !seen.has(i.definition)) {
+      seen.add(i.definition);
+      allDefs.push({ id: i.id, text: i.definition, correctOption: i.correct_option });
+    }
+  });
+
+  // If no definitions stored, fall back to showing correct_option letters
+  const hasDefinitions = items.some(i => i.definition);
 
   function selectTerm(id) {
     if (submitted) return;
     setSelected(s => s === id ? null : id);
   }
 
-  function selectDef(def) {
+  function selectDef(defText, defId) {
     if (submitted || !selected) return;
-    setMatches(m => ({ ...m, [selected]: def }));
+    setMatches(m => ({ ...m, [selected]: defText }));
     setSelected(null);
   }
 
-  const score = submitted ? Math.round(items.filter(i => matches[i.id] === i.definition).length / items.length * 100) : null;
+  function isItemCorrect(i) {
+    const studentMatch = matches[i.id];
+    if (!studentMatch) return false;
+    // Check if student matched to the correct definition
+    // correct_option tells us which definition is right
+    const correctDef = items.find(x => x.correct_option === i.correct_option && x.id === i.id)?.definition;
+    if (correctDef) return studentMatch === correctDef;
+    // Fallback: direct definition match
+    return studentMatch === i.definition;
+  }
+
+  const score = submitted
+    ? Math.round(items.filter(isItemCorrect).length / items.length * 100)
+    : null;
 
   return (
     <Card className="p-6">
@@ -1393,7 +1418,7 @@ function MatchingExercise({ item, onNext }) {
               onClick={() => selectTerm(i.id)}
               className={`w-full p-3 rounded-lg border-2 text-sm text-left transition-all font-medium ${
                 selected === i.id ? "border-indigo-500 bg-indigo-50 text-indigo-700" :
-                matches[i.id] ? (submitted ? (matches[i.id] === i.definition ? "border-green-400 bg-green-50 text-green-800" : "border-red-300 bg-red-50 text-red-700") : "border-teal-400 bg-teal-50 text-teal-700") :
+                matches[i.id] ? (submitted ? (isItemCorrect(i) ? "border-green-400 bg-green-50 text-green-800" : "border-red-300 bg-red-50 text-red-700") : "border-teal-400 bg-teal-50 text-teal-700") :
                 "border-gray-200 hover:border-indigo-300 text-gray-700"
               }`}>
               {i.term}
@@ -1402,18 +1427,18 @@ function MatchingExercise({ item, onNext }) {
           ))}
         </div>
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Definitions</div>
-          {shuffledDefs.map(i => {
-            const isMatched = Object.values(matches).includes(i.definition);
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Match</div>
+          {allDefs.map(def => {
+            const isMatched = Object.values(matches).includes(def.text);
             return (
-              <button key={i.id}
-                onClick={() => selectDef(i.definition)}
+              <button key={def.id}
+                onClick={() => selectDef(def.text, def.id)}
                 className={`w-full p-3 rounded-lg border-2 text-sm text-left transition-all ${
                   isMatched ? "border-gray-200 bg-gray-50 text-gray-400 cursor-default" :
                   selected ? "border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700 cursor-pointer" :
                   "border-gray-200 text-gray-600"
                 }`}>
-                {i.definition}
+                {def.text}
               </button>
             );
           })}
@@ -1471,7 +1496,9 @@ function SentenceReorderExercise({ item, onNext }) {
   function isCorrect(q) {
     const built = order[q.id].join(' ').replace(/\s+([.,!?])/g, '$1');
     const target = q.answer.trim();
-    return built.toLowerCase() === target.toLowerCase();
+    // Compare ignoring case and trailing punctuation
+    const normalize = s => s.toLowerCase().replace(/[.,!?]+$/, '').trim();
+    return normalize(built) === normalize(target);
   }
 
   const score = submitted

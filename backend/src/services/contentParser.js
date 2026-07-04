@@ -214,6 +214,19 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
           // Sort or true_false: just prompt + answer
           currentExercise.items.push({ id: num, prompt, term: prompt, answer, explanation: '' });
         }
+      } else if (currentExercise.type === 'matching' && rawContent.includes('\t')) {
+        // Tab-separated matching: "Term [tab] a. option"
+        // The option is NOT the definition — it's one choice in the options list
+        // Store it in _defs for later answer key lookup
+        const tabParts = rawContent.split(/\t+/);
+        const term = tabParts[0].trim();
+        const defPart = tabParts[1]?.trim();
+        const defMatch = defPart?.match(/^([a-g])[.)\s]+(.+)/i);
+        if (defMatch) {
+          if (!currentExercise._defs) currentExercise._defs = {};
+          currentExercise._defs[defMatch[1].toLowerCase()] = defMatch[2].trim();
+        }
+        currentExercise.items.push({ id: num, term, definition: '', correctOption: '' });
       } else {
         currentExercise.items.push(parseItem(currentExercise.type, num, rawContent));
       }
@@ -477,9 +490,11 @@ function buildBody(ex) {
     return { instructions: ex.instructions, items: ex.items.map(it => ({
       id: it.id,
       term: it.term,
-      // Use correctOption to look up definition from _defs if not already set
-      definition: it.definition || (it.correctOption && defs[it.correctOption]) || 
-                  (it.optionLetter && defs[it.optionLetter]) || '',
+      // correct_option tells us WHICH definition is correct for this term
+      // definition should be the CORRECT answer (looked up via correctOption)
+      definition: (it.correctOption && defs[it.correctOption]) || 
+                  (it.optionLetter && defs[it.optionLetter]) || 
+                  it.definition || '',
       correct_option: it.correctOption || it.optionLetter || '',
     })) };
   }
