@@ -167,6 +167,27 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     }
     if (/^subject\s+verb/i.test(line)) { i++; continue; }
 
+    // Collect a) b) c) d) options for multiple_choice exercises
+    if (currentExercise.type === 'multiple_choice' && /^([a-d])[.)]\s*(.+)/i.test(line)) {
+      const lm = line.match(/^([a-d])[.)]\s*(.+)/i);
+      if (lm && currentExercise.items.length > 0) {
+        const lastItem = currentExercise.items[currentExercise.items.length - 1];
+        if (!lastItem.options) lastItem.options = [];
+        lastItem.options.push(lm[2].trim());
+      }
+      i++; continue;
+    }
+
+    // Collect a. b. c. lettered definitions for matching exercises
+    if (currentExercise.type === 'matching' && /^([a-g])[.)]\s*(.+)/i.test(line)) {
+      const lm = line.match(/^([a-g])[.)]\s*(.+)/i);
+      if (lm) {
+        if (!currentExercise._defs) currentExercise._defs = {};
+        currentExercise._defs[lm[1].toLowerCase()] = lm[2].trim();
+      }
+      i++; continue;
+    }
+
     const itemMatch = line.match(/^(\d+)[\.\)]\s*(.+)/);
     if (itemMatch) {
       const num = parseInt(itemMatch[1]);
@@ -386,11 +407,24 @@ function mergeAnswerKey(exercises, answerKey) {
       if (/^\(Accept/i.test(t) || !t) continue;
 
       if (ex.type === 'matching') {
-        // Formats: "1-c", "1–c", "1 → E", "1 — E", "1-B", "1 → B  (explanation)"
+        // Formats: "1-c", "1–c", "1 → E", "1 — E", "1-B"
         const m = t.match(/^(\d+)\s*[–\-—→>]+\s*([a-g])/i);
         if (m) {
           const item = ex.items.find(it => it.id === parseInt(m[1]));
           if (item) item.correctOption = m[2].toLowerCase();
+        }
+        continue;
+      }
+      if (ex.type === 'multiple_choice') {
+        // Formats: "1-b" or "1. b" — set correct index from letter
+        const m = t.match(/^(\d+)[\-–.\s]+([a-d])/i);
+        if (m) {
+          const item = ex.items.find(it => it.id === parseInt(m[1]));
+          if (item) {
+            const letter = m[2].toLowerCase();
+            item.answer = letter.toUpperCase();
+            item.correct = letter.charCodeAt(0) - 97; // a→0, b→1, c→2, d→3
+          }
         }
         continue;
       }
