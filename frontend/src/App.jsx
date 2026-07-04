@@ -1166,7 +1166,10 @@ function ContentList({ skill, level, onSelect }) {
             // Vocabulary style: one card per lesson, click opens first exercise
             lessons.map(lesson => (
               <Card key={lesson.number} className="p-5 hover:border-indigo-300 transition-colors cursor-pointer"
-                onClick={() => onSelect({ ...lesson.exercises[0], _lessonExercises: lesson.exercises, _lessonTitle: lesson.title })}>
+                onClick={() => {
+                  console.log('Lesson clicked:', lesson.number, 'exercises:', lesson.exercises.length);
+                  onSelect({ ...lesson.exercises[0], _lessonExercises: lesson.exercises, _lessonTitle: lesson.title });
+                }}>
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-xl">
                     {icons[skill] || "📚"}
