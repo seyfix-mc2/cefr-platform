@@ -68,9 +68,22 @@ router.post('/content', async (req, res) => {
 
   if (replace) {
     await query(
-      `DELETE FROM content_items WHERE school_id = $1 AND level = $2 AND skill = 'grammar'`,
-      [req.school.id, level]
+      `DELETE FROM content_items WHERE school_id = $1 AND level = $2 AND skill = $3`,
+      [req.school.id, level, skill]
     );
+  } else {
+    // Always delete specific lesson numbers being uploaded to prevent duplicates
+    const lessonNums = lessons.map(l => l.lessonNumber).filter(Boolean);
+    if (lessonNums.length > 0) {
+      for (const num of lessonNums) {
+        await query(
+          `DELETE FROM content_items 
+           WHERE school_id = $1 AND level = $2 AND skill = $3
+           AND title ~ $4`,
+          [req.school.id, level, skill, `Lesson\s+${num}[^0-9]`]
+        );
+      }
+    }
   }
 
   let inserted = 0;
