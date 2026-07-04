@@ -1216,6 +1216,7 @@ function ContentList({ skill, level, onSelect }) {
 function ExerciseView({ item, onBack }) {
   // Support multi-exercise lessons (vocabulary style)
   const exercises = item._lessonExercises || [item];
+  console.log('ExerciseView: exercises count =', exercises.length, '_lessonExercises =', item._lessonExercises?.length);
   const [currentIdx, setCurrentIdx] = useState(0);
   const currentItem = exercises[currentIdx];
   const lessonTitle = item._lessonTitle || currentItem.title;
