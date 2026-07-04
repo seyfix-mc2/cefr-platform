@@ -66,3 +66,28 @@ Consider: allow students to access content one level below their assigned level 
 - Inline | ANSWER: pipe format supported
 - Matching with separate lettered definitions supported
 - \r\n Windows line endings handled on server
+
+---
+## Frontend deployment issue (July 2026)
+
+### Render static site serving stale bundle
+- `cefr-frontend` builds successfully (vite build runs, no errors)
+- But the served JS bundle (`/assets/index-BXYSseKp.js`) is only 10 bytes
+- Bundle does NOT contain new code (Next Exercise, _lessonExercises, v2.3)
+- Login page shows v2.3 (possibly cached from a partial earlier deploy)
+- Root cause: unknown — Render publish directory is `dist`, build command is correct
+- Next steps to try:
+  1. Delete and recreate cefr-frontend static site on Render from scratch
+  2. Check if `dist` folder is being created in the right location during build
+  3. Try adding `cd frontend && npm install && npm run build` as build command with root dir set to `.` instead of `frontend`
+
+### What's working
+- Backend (cefr-api) deploys and runs correctly
+- A1 Grammar Lesson 1 uploaded and visible to students (3 exercises)
+- Exercise A (fill_blank) renders and works
+- Next Exercise button is in source code but not reaching browser
+
+### Content status at this point
+- A1 Grammar: Lesson 1 uploaded only
+- All other content: empty (deleted during cleanup)
+- Need to re-upload everything once frontend deploy is fixed
