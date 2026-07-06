@@ -30,7 +30,12 @@ async function request(path, options = {}) {
     headers,
   });
 
-  if (res.status === 401) {
+  // Only treat a 401 as "session expired" when we were actually using a
+  // stored session token. A 401 from a fresh login attempt (no token sent)
+  // just means wrong credentials -- that must fall through to the normal
+  // error handling below so the caller gets a real Error with the server's
+  // message, instead of `undefined` from a forced logout-redirect here.
+  if (res.status === 401 && token) {
     localStorage.removeItem('token');
     localStorage.removeItem('school_slug');
     window.location.href = '/';
