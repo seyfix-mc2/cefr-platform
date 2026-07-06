@@ -1225,6 +1225,11 @@ function ExerciseView({ item, onBack }) {
     fill_blank: FillBlankExercise,
     matching: MatchingExercise,
     sentence_reorder: SentenceReorderExercise,
+    rewrite: WrittenExercise,
+    short_answer: WrittenExercise,
+    error_correction: WrittenExercise,
+    sort: SortExercise,
+    true_false: TrueFalseExercise,
     dictation: DictationExercise,
     read_aloud: ReadAloudExercise,
     picture_description: PictureDescriptionExercise,
@@ -1453,6 +1458,173 @@ function MatchingExercise({ item, onNext }) {
           {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
         </div>
       )}
+    </Card>
+  );
+}
+
+
+function WrittenExercise({ item, onNext }) {
+  // Generic component for rewrite, short_answer, error_correction
+  const { items, instructions } = item.body;
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+
+  const score = submitted
+    ? Math.round(items.filter(q => {
+        const student = (answers[q.id] || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
+        const correct = (q.answer || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
+        return student === correct;
+      }).length / items.length * 100)
+    : null;
+
+  return (
+    <Card className="p-6">
+      <p className="text-gray-600 mb-6">{instructions}</p>
+      <div className="space-y-4">
+        {items.map(q => {
+          const student = (answers[q.id] || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
+          const correct = (q.answer || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
+          const isCorrect = submitted && student === correct;
+          const isWrong = submitted && student !== correct;
+          return (
+            <div key={q.id} className="space-y-1">
+              <p className="text-sm text-gray-700 font-medium">{q.id}. {q.prompt}</p>
+              <input
+                type="text"
+                disabled={submitted}
+                value={answers[q.id] || ''}
+                onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))}
+                placeholder="Your answer..."
+                className={`w-full px-3 py-2 text-sm border-2 rounded-lg outline-none transition-all ${
+                  isCorrect ? 'border-green-400 bg-green-50' :
+                  isWrong ? 'border-red-300 bg-red-50' :
+                  'border-gray-200 focus:border-indigo-400'
+                }`}
+              />
+              {isWrong && <p className="text-xs text-green-700">✓ {q.answer}</p>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-6">
+        {!submitted ? (
+          <Button onClick={() => setSubmitted(true)}>Check answers</Button>
+        ) : (
+          <div className="p-4 rounded-xl bg-indigo-50 text-center">
+            <div className="text-2xl font-bold text-indigo-700">{score}%</div>
+            <div className="text-sm text-gray-600 mt-1">{score >= 80 ? "Great job! 🎉" : "Review the correct answers above."}</div>
+            {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SortExercise({ item, onNext }) {
+  const { items, instructions } = item.body;
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+
+  // Get unique categories
+  const categories = [...new Set(items.map(i => i.answer).filter(Boolean))];
+
+  const score = submitted
+    ? Math.round(items.filter(q => (answers[q.id] || '').toLowerCase() === (q.answer || '').toLowerCase()).length / items.length * 100)
+    : null;
+
+  return (
+    <Card className="p-6">
+      <p className="text-gray-600 mb-6">{instructions}</p>
+      <div className="space-y-3">
+        {items.map(q => {
+          const isCorrect = submitted && (answers[q.id] || '').toLowerCase() === (q.answer || '').toLowerCase();
+          const isWrong = submitted && (answers[q.id] || '').toLowerCase() !== (q.answer || '').toLowerCase();
+          return (
+            <div key={q.id} className="flex items-center gap-3">
+              <span className="text-sm text-gray-700 flex-1">{q.term || q.prompt}</span>
+              <select
+                disabled={submitted}
+                value={answers[q.id] || ''}
+                onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))}
+                className={`px-3 py-1.5 text-sm border-2 rounded-lg ${
+                  isCorrect ? 'border-green-400 bg-green-50' :
+                  isWrong ? 'border-red-300 bg-red-50' :
+                  'border-gray-200'
+                }`}
+              >
+                <option value="">Select...</option>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-6">
+        {!submitted ? (
+          <Button onClick={() => setSubmitted(true)} disabled={Object.keys(answers).length < items.length}>Check answers</Button>
+        ) : (
+          <div className="p-4 rounded-xl bg-indigo-50 text-center">
+            <div className="text-2xl font-bold text-indigo-700">{score}%</div>
+            <div className="text-sm text-gray-600 mt-1">{score >= 80 ? "Great job! 🎉" : "Review the correct answers."}</div>
+            {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function TrueFalseExercise({ item, onNext }) {
+  const { items, instructions } = item.body;
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+
+  const normalize = s => (s || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+
+  const score = submitted
+    ? Math.round(items.filter(q => normalize(answers[q.id]) === normalize(q.answer)).length / items.length * 100)
+    : null;
+
+  return (
+    <Card className="p-6">
+      <p className="text-gray-600 mb-6">{instructions}</p>
+      <div className="space-y-3">
+        {items.map(q => {
+          const isCorrect = submitted && normalize(answers[q.id]) === normalize(q.answer);
+          const isWrong = submitted && normalize(answers[q.id]) !== normalize(q.answer);
+          return (
+            <div key={q.id} className={`p-3 rounded-lg border-2 ${isCorrect ? 'border-green-400 bg-green-50' : isWrong ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
+              <p className="text-sm text-gray-700 mb-2">{q.id}. {q.prompt}</p>
+              <div className="flex gap-2">
+                {['TRUE', 'FALSE', 'RIGHT', 'WRONG', 'NOT GIVEN'].filter(opt => 
+                  (q.answer?.toUpperCase().includes('TRUE') || q.answer?.toUpperCase().includes('FALSE') || q.answer?.toUpperCase().includes('NOT GIVEN') ? ['TRUE','FALSE','NOT GIVEN'] : ['RIGHT','WRONG']).includes(opt)
+                ).map(opt => (
+                  <button key={opt} disabled={submitted}
+                    onClick={() => setAnswers(a => ({ ...a, [q.id]: opt }))}
+                    className={`px-3 py-1 text-xs rounded-full border-2 transition-all ${
+                      answers[q.id] === opt ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'
+                    }`}>
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              {isWrong && <p className="text-xs text-green-700 mt-1">✓ {q.answer}</p>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-6">
+        {!submitted ? (
+          <Button onClick={() => setSubmitted(true)} disabled={Object.keys(answers).length < items.length}>Check answers</Button>
+        ) : (
+          <div className="p-4 rounded-xl bg-indigo-50 text-center">
+            <div className="text-2xl font-bold text-indigo-700">{score}%</div>
+            <div className="text-sm text-gray-600 mt-1">{score >= 80 ? "Great job! 🎉" : "Review the correct answers."}</div>
+            {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
