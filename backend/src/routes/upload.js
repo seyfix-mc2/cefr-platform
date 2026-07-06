@@ -33,7 +33,7 @@ router.post('/content', async (req, res) => {
     return res.status(400).json({ error: `Failed to parse file: ${err.message}` });
   }
 
-  console.log('[upload] parsed', lessons?.length, 'lessons, level:', level, 'skill:', skill, 'text length:', text?.length);
+  console.log('[upload] v2 parsed', lessons?.length, 'lessons, level:', level, 'skill:', skill, 'text length:', text?.length);
   lessons?.forEach(l => console.log(`  L${l.lessonNumber}: ${l.lessonTitle} — ${l.contentItems?.length || 0} exercises`));
   // Log first 200 chars and key line detection
   const lines = text?.split('\n') || [];
