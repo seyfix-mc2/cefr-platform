@@ -3,3 +3,6 @@ node_modules/
 *.log
 dist/
 .DS_Store
+
+# Local dev tooling (not part of the app)
+.claude/
