@@ -543,11 +543,23 @@ function mergeSortCategoryAnswerKey(ex, answers) {
   const normalize = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
   for (const raw of answers) {
     const line = raw.trim();
-    const catMatch = line.match(/^([a-z]+)\s*:\s*$/i);
-    if (catMatch) { currentCategory = catMatch[1]; continue; }
+    // Category header can be a single word ("a:") or a full label
+    // ("Regular Plurals:") -- anything ending in a bare colon with no other
+    // content on the line.
+    const catMatch = line.match(/^([a-z][a-z\s]*)\s*:\s*$/i);
+    if (catMatch) { currentCategory = catMatch[1].trim(); continue; }
     if (!currentCategory || !line) continue;
     const target = normalize(line);
-    const item = ex.items.find(it => normalize((it.term || '').replace(/_{2,}/g, currentCategory)) === target);
+    const item = ex.items.find(it => {
+      const term = it.term || '';
+      // If the item has a blank, the answer line is that blank filled in with
+      // the category (Lesson 5 style: "___ big office" -> "a big office").
+      // If it doesn't, the item text itself is just listed under whichever
+      // category section it belongs to (Lesson 7 style: "books" listed under
+      // "Regular Plurals:") -- compare it directly, unchanged.
+      const candidate = /_{2,}/.test(term) ? term.replace(/_{2,}/g, currentCategory) : term;
+      return normalize(candidate) === target;
+    });
     if (item) item.answer = currentCategory;
   }
 }

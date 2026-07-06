@@ -1656,12 +1656,17 @@ function TwoColumnSortExercise({ item, onNext, categories }) {
   function isCorrect(q) { return placedCategory(q) === q.answer; }
   const allPlaced = items.every(q => placedCategory(q) !== null);
   const score = submitted ? Math.round(items.filter(isCorrect).length / items.length * 100) : null;
+  // Some sort exercises fill a blank in with the category (Lesson 5 style:
+  // "___ big office" -> "a big office"); others just group already-complete
+  // words/phrases under a category label (Lesson 7 style: "books" under
+  // "Regular Plurals") with nothing to fill in. Word the hints accordingly.
+  const hasBlank = items.some(q => /_{2,}/.test(q.term));
 
   return (
     <Card className="p-6">
       <p className="text-gray-600 mb-4">{instructions}</p>
       <div className="bg-gray-50 rounded-lg p-4 mb-6">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Phrases</div>
+        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Items to sort</div>
         <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
           {items.map(q => <li key={q.id}>{q.term}</li>)}
         </ul>
@@ -1675,7 +1680,9 @@ function TwoColumnSortExercise({ item, onNext, categories }) {
               disabled={submitted}
               value={columns[cat] || ''}
               onChange={e => setColumns(c => ({ ...c, [cat]: e.target.value }))}
-              placeholder={`Type the completed phrases that use "${cat}" here, one per line (e.g. "${cat} ...")...`}
+              placeholder={hasBlank
+                ? `Type the completed phrases that use "${cat}" here, one per line (e.g. "${cat} ...")...`
+                : `Type the words/phrases that belong to "${cat}" here, one per line...`}
               className="w-full text-sm border-2 border-gray-200 rounded-lg p-3 focus:outline-none focus:border-indigo-400 disabled:bg-gray-50"
             />
           </div>
@@ -1688,7 +1695,8 @@ function TwoColumnSortExercise({ item, onNext, categories }) {
           <div className="space-y-1 mb-4">
             {items.map(q => (
               <div key={q.id} className={`text-sm px-3 py-1.5 rounded-lg ${isCorrect(q) ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-                {isCorrect(q) ? '✓' : '✗'} {q.term} — correct: "{completed(q.term, q.answer)}" (column "{q.answer}")
+                {isCorrect(q) ? '✓' : '✗'} {q.term} — correct column: "{q.answer}"
+                {hasBlank && ` (→ "${completed(q.term, q.answer)}")`}
               </div>
             ))}
           </div>
