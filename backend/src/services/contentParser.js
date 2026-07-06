@@ -227,6 +227,17 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
           currentExercise._defs[defMatch[1].toLowerCase()] = defMatch[2].trim();
         }
         currentExercise.items.push({ id: num, term, definition: '', correctOption: '' });
+      } else if (currentExercise.type === 'multiple_choice' && /\sa[.)]\s/i.test(rawContent) && /\sb[.)]\s/i.test(rawContent)) {
+        // Inline lettered options on the same line as the question:
+        // "1. She _____ to work. a) go b) goes c) went d) going"
+        const optStart = rawContent.search(/\sa[.)]\s/i);
+        const prompt = rawContent.slice(0, optStart).trim();
+        const optionsText = rawContent.slice(optStart).trim();
+        const options = optionsText
+          .split(/\s+(?=[a-d][.)])/i)
+          .map(o => o.replace(/^[a-d][.)]\s*/i, '').trim())
+          .filter(Boolean);
+        currentExercise.items.push({ id: num, prompt, options, correct: 0, answer: '' });
       } else {
         currentExercise.items.push(parseItem(currentExercise.type, num, rawContent));
       }
@@ -386,10 +397,10 @@ function detectExerciseType(title) {
   if (t.includes('error correction') || t.includes('find and correct') || t.includes('correct the mistake')) return 'error_correction';
   if (t.includes('collocation check') || t.includes('collocation swipe') || t.includes('swipe')) return 'true_false';
   if (t.includes('true') && t.includes('false')) return 'true_false';
-  if (t.includes('categorize') || t.includes('categorise') || t.includes('sort') || t.includes('column') || t.includes('frequency scale') || t.includes('ordering') || t.includes('odd one out')) return 'sort';
+  if (t.includes('categoris') || t.includes('categoriz') || t.includes('sort') || t.includes('column') || t.includes('frequency scale') || t.includes('ordering') || t.includes('odd one out')) return 'sort';
   if (t.includes('rewrite') || t.includes('transform') || t.includes('replace') || t.includes('join') || t.includes('combine') || t.includes('sentence combine')) return 'rewrite';
   if (t.includes('short answer') || t.includes('completion') || t.includes('form fill')) return 'short_answer';
-  if (t.includes('multiple choice') || t.includes('choose the correct') || t.includes('mime guess') || t.includes('choose correct') || t.includes('choose meaning') || t.includes('choose function') || t.includes('sentence choice') || t.includes('follow instructions') || t.includes('map task') || t.includes('gap fill') || t.includes('gap-fill') || t.includes('context choice') || t.includes('definition match')) return 'multiple_choice';
+  if (t.includes('multiple choice') || t.includes('choose the correct') || t.includes('choose the best') || t.includes('mime guess') || t.includes('choose correct') || t.includes('choose meaning') || t.includes('choose function') || t.includes('sentence choice') || t.includes('follow instructions') || t.includes('map task') || t.includes('gap fill') || t.includes('gap-fill') || t.includes('context choice') || t.includes('definition match')) return 'multiple_choice';
   if (t.includes('fill') || t.includes('blank') || t.includes('complete') || t.includes('sentence order')) return 'fill_blank';
   if (t.includes('match') || t.includes('tap') || t.includes('drag') || t.includes('emoji') || t.includes('memory') || t.includes('opposite') || t.includes('pair') || t.includes('correct article') || t.includes('correct demonstrative') || t.includes('correct form') || t.includes('correct conjunction')) return 'matching';
   if (t.includes('unjumble') || t.includes('reorder') || t.includes('reorder') || t.includes('drag path') || t.includes('sequence') || t.includes('put') && t.includes('order')) return 'sentence_reorder';
@@ -778,10 +789,14 @@ function parseFormat4Single(text, level, skill = 'grammar') {
 
       if (optionsPart) {
         // Multiple choice or cloze: has A. B. C. D. options
-        const options = [];
-        const optMatches = optionsPart.matchAll(/([A-D])[.)\s]+([^A-D]+?)(?=[A-D][.)]|$)/gi);
-        for (const m of optMatches) options.push(m[2].trim());
-        
+        // Split on whitespace preceding the next letter marker (not on the letters
+        // themselves) -- a char-class-based split would also strip any a/b/c/d
+        // that appears inside the option text (e.g. "believed", "have believed").
+        const options = optionsPart
+          .split(/\s+(?=[A-D][.)])/i)
+          .map(o => o.replace(/^[A-D][.)]\s*/i, '').trim())
+          .filter(Boolean);
+
         // Find correct index
         const correctLetter = answer.replace(/[^A-D]/gi, '').toUpperCase();
         const correctIdx = correctLetter ? correctLetter.charCodeAt(0) - 65 : 0;

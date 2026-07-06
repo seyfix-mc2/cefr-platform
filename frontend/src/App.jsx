@@ -1,4 +1,3 @@
-import ContentUpload from "./components/ContentUpload.jsx";
 import ContentLibrary from "./components/ContentLibrary.jsx";
 import { api } from "./lib/api.js";
 import { useState, useEffect, useMemo, createContext, useContext } from "react";
@@ -403,7 +402,6 @@ function AdminDashboard() {
     { id: "teachers", label: "Teachers", icon: "👩‍🏫", active: page === "teachers", onClick: () => setPage("teachers") },
     { id: "progress", label: "School Progress", icon: "📈", active: page === "progress", onClick: () => setPage("progress") },
     { id: "branding", label: "Branding", icon: "🎨", active: page === "branding", onClick: () => setPage("branding") },
-    { id: "upload", label: "Upload Content", icon: "📤", active: page === "upload", onClick: () => setPage("upload") },
     { id: "library", label: "Content Library", icon: "📚", active: page === "library", onClick: () => setPage("library") },
   ];
 
@@ -556,7 +554,6 @@ function AdminDashboard() {
         </div>
       )}
 
-      {page === "upload" && <ContentUpload />}
       {page === "library" && <ContentLibrary />}
 
       {page === "branding" && (
