@@ -31,7 +31,12 @@ export function parseContentFile(text, level, skill = 'grammar') {
     // bullet-point glyphs (e.g. U+F0B7) from pasting a Word/Docs bulleted list
     // into plain text; they're invisible in most editors but break exact-text
     // matching (e.g. an un-numbered item's text vs. its answer-key line).
-    .replace(/[\u{E000}-\u{F8FF}]/gu, '');
+    .replace(/[\u{E000}-\u{F8FF}]/gu, '')
+    // Normalize typographic quotes to straight ones -- word processors write
+    // "don't" with a curly apostrophe (U+2019), which silently breaks any
+    // regex/word-matching written with a literal straight quote.
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"');
 
   // Format 3: Markdown (has ## Exercise headings)
   if (/^##\s+Exercise/im.test(normalized)) {
@@ -294,6 +299,26 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
       } else {
         currentExercise.items.push(parseItem(currentExercise.type, num, rawContent));
       }
+
+      // Some exercises put the two choices on their own line right after the
+      // numbered sentence instead of inline -- a fill-blank sentence followed
+      // by a bare "don't / doesn't" line, or an error-judgment sentence
+      // followed by a bare "correct      wrong" line. Consume that line and
+      // turn the item just pushed into a proper 2-option choice (regardless
+      // of whatever type the title got misdetected as).
+      const pushedItem = currentExercise.items[currentExercise.items.length - 1];
+      const peekLine = lines[i + 1]?.trim();
+      const twoOptMatch = peekLine && (peekLine.match(/^(\S+)\s*\/\s*(\S+)$/) || peekLine.match(/^(\S+)\s{2,}(\S+)$/));
+      if (pushedItem && twoOptMatch) {
+        const [, optA, optB] = twoOptMatch;
+        const baseText = pushedItem.prompt || pushedItem.term || '';
+        const isJudgment = /^(correct|wrong|right|true|false)$/i.test(optA) && /^(correct|wrong|right|true|false)$/i.test(optB);
+        currentExercise.items[currentExercise.items.length - 1] = isJudgment
+          ? { id: pushedItem.id, prompt: baseText, answer: '' }
+          : { id: pushedItem.id, prompt: baseText, options: [optA, optB], correct: 0, answer: '' };
+        currentExercise.type = isJudgment ? 'true_false' : 'multiple_choice';
+        i++; // consume the options line too
+      }
     }
     i++;
   }
@@ -502,6 +527,11 @@ function mergeAnswerKey(exercises, answerKey) {
       continue;
     }
 
+    if (ex.type === 'true_false') {
+      mergeJudgmentAnswerKey(ex, answers);
+      continue;
+    }
+
     for (const ansLine of answers) {
       const t = ansLine.trim();
       // Skip meta-notes like "(Accept: isn't / aren't)"
@@ -517,8 +547,12 @@ function mergeAnswerKey(exercises, answerKey) {
         continue;
       }
       if (ex.type === 'multiple_choice') {
-        // Formats: "1-b" or "1. b" — set correct index from letter
-        const m = t.match(/^(\d+)[\-–.\s]+([a-d])/i);
+        // Formats: "1-b" or "1. b" — set correct index from letter. The
+        // negative lookahead keeps this from matching the first letter of a
+        // real word answer like "don't" (which starts with 'd', a valid
+        // option letter) -- a bare letter answer is never followed by more
+        // letters, only punctuation, whitespace, or the end of the line.
+        const m = t.match(/^(\d+)[\-–.\s]+([a-d])(?![a-z])/i);
         if (m) {
           const item = ex.items.find(it => it.id === parseInt(m[1]));
           if (item) {
@@ -555,12 +589,44 @@ function mergeAnswerKey(exercises, answerKey) {
 
       if (ex.type === 'sentence_reorder') {
         item.answer = answer;
-      } else if (ex.type === 'true_false') {
-        item.answer = answer.toLowerCase().startsWith('t') ? 'true' : 'false';
       } else {
         // fill_blank, rewrite, short_answer, error_correction, sort, multiple_choice
         item.answer = answer;
       }
+    }
+  }
+}
+
+// Judgment-style answer key (correct/wrong, true/false, right/wrong, etc.).
+// Each item's answer may be given directly on its numbered line ("1. wrong"),
+// or, when the numbered line just restates the full sentence instead, on the
+// bare line immediately after it ("1. <sentence>" then "wrong" alone).
+function mergeJudgmentAnswerKey(ex, answers) {
+  const judgmentWords = ['correct', 'wrong', 'right', 'true', 'false', 'not given'];
+  let pendingId = null;
+  for (const raw of answers) {
+    const line = raw.trim();
+    if (!line) continue;
+    const numMatch = line.match(/^(\d+)[.)]\s*(.*)/);
+    if (numMatch) {
+      const id = parseInt(numMatch[1]);
+      const rest = numMatch[2].trim().toLowerCase();
+      if (judgmentWords.includes(rest)) {
+        const item = ex.items.find(it => it.id === id);
+        if (item) item.answer = rest;
+        pendingId = null;
+      } else {
+        pendingId = id;
+      }
+      continue;
+    }
+    if (pendingId != null) {
+      const word = line.toLowerCase();
+      if (judgmentWords.includes(word)) {
+        const item = ex.items.find(it => it.id === pendingId);
+        if (item) item.answer = word;
+      }
+      pendingId = null;
     }
   }
 }

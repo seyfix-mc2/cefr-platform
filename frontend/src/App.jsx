@@ -1487,18 +1487,41 @@ function MatchingExercise({ item, onNext }) {
 }
 
 
+// Negative contractions and their expanded form are equally valid answers
+// (a rewrite exercise's key often explicitly notes this, e.g. "Accept:
+// don't / doesn't forms") -- expand both sides before comparing so a
+// student isn't marked wrong just for picking one form over the other.
+function expandContractions(s) {
+  return s
+    .replace(/\bdon't\b/g, 'do not')
+    .replace(/\bdoesn't\b/g, 'does not')
+    .replace(/\bisn't\b/g, 'is not')
+    .replace(/\baren't\b/g, 'are not')
+    .replace(/\bwasn't\b/g, 'was not')
+    .replace(/\bweren't\b/g, 'were not')
+    .replace(/\bhaven't\b/g, 'have not')
+    .replace(/\bhasn't\b/g, 'has not')
+    .replace(/\bhadn't\b/g, 'had not')
+    .replace(/\bwon't\b/g, 'will not')
+    .replace(/\bwouldn't\b/g, 'would not')
+    .replace(/\bcan't\b/g, 'cannot')
+    .replace(/\bcouldn't\b/g, 'could not')
+    .replace(/\bshouldn't\b/g, 'should not')
+    .replace(/\bmustn't\b/g, 'must not');
+}
+
 function WrittenExercise({ item, onNext }) {
   // Generic component for rewrite, short_answer, error_correction
   const { items, instructions } = item.body;
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
 
+  function gradeText(raw) {
+    return expandContractions((raw || '').trim().toLowerCase().replace(/[.,!?]+$/, ''));
+  }
+
   const score = submitted
-    ? Math.round(items.filter(q => {
-        const student = (answers[q.id] || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
-        const correct = (q.answer || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
-        return student === correct;
-      }).length / items.length * 100)
+    ? Math.round(items.filter(q => gradeText(answers[q.id]) === gradeText(q.answer)).length / items.length * 100)
     : null;
 
   return (
@@ -1506,8 +1529,8 @@ function WrittenExercise({ item, onNext }) {
       <p className="text-gray-600 mb-6">{instructions}</p>
       <div className="space-y-4">
         {items.map(q => {
-          const student = (answers[q.id] || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
-          const correct = (q.answer || '').trim().toLowerCase().replace(/[.,!?]+$/, '');
+          const student = gradeText(answers[q.id]);
+          const correct = gradeText(q.answer);
           const isCorrect = submitted && student === correct;
           const isWrong = submitted && student !== correct;
           return (
@@ -1718,6 +1741,14 @@ function TrueFalseExercise({ item, onNext }) {
 
   const normalize = s => (s || '').trim().toLowerCase().replace(/[^a-z]/g, '');
 
+  // Button labels come from whatever judgment words the content actually
+  // uses (correct/wrong, true/false, right/wrong, not given...) instead of
+  // guessing between two hardcoded sets -- a hardcoded RIGHT/WRONG pair
+  // wouldn't match content that literally says "correct"/"wrong", even
+  // though those mean the same thing.
+  const buttonLabels = [...new Set(items.map(q => (q.answer || '').trim().toUpperCase()).filter(Boolean))];
+  if (buttonLabels.length < 2) buttonLabels.push('TRUE', 'FALSE');
+
   const score = submitted
     ? Math.round(items.filter(q => normalize(answers[q.id]) === normalize(q.answer)).length / items.length * 100)
     : null;
@@ -1733,9 +1764,7 @@ function TrueFalseExercise({ item, onNext }) {
             <div key={q.id} className={`p-3 rounded-lg border-2 ${isCorrect ? 'border-green-400 bg-green-50' : isWrong ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
               <p className="text-sm text-gray-700 mb-2">{q.id}. {q.prompt}</p>
               <div className="flex gap-2">
-                {['TRUE', 'FALSE', 'RIGHT', 'WRONG', 'NOT GIVEN'].filter(opt => 
-                  (q.answer?.toUpperCase().includes('TRUE') || q.answer?.toUpperCase().includes('FALSE') || q.answer?.toUpperCase().includes('NOT GIVEN') ? ['TRUE','FALSE','NOT GIVEN'] : ['RIGHT','WRONG']).includes(opt)
-                ).map(opt => (
+                {buttonLabels.map(opt => (
                   <button key={opt} disabled={submitted}
                     onClick={() => setAnswers(a => ({ ...a, [q.id]: opt }))}
                     className={`px-3 py-1 text-xs rounded-full border-2 transition-all ${
