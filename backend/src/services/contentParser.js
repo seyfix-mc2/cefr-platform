@@ -229,8 +229,25 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
       const num = parseInt(itemMatch[1]);
       const rawContent = itemMatch[2].trim();
 
-      // Handle inline pipe format: "prompt | A. opt B. opt | ANSWER: X" or "term | ANSWER: category"
-      if (rawContent.includes('| ANSWER:') || rawContent.includes('|ANSWER:')) {
+      // Two-option "tap" exercise: "Subject <gap> optionA / optionB rest of
+      // sentence" -- the column gap is meant to be a tab but isn't always
+      // (some rows use a run of spaces instead). Titles like "Tap the correct
+      // verb form" get misdetected as matching (see detectExerciseType's
+      // 'tap' keyword), but this row shape is unambiguous regardless of the
+      // guessed type -- it's a 2-option multiple-choice question per subject,
+      // not a term/definition pair.
+      const tapVerbMatch = rawContent.match(/^(\S+)\s{2,}(\S+)\s*\/\s*(\S+)\s+(.*)$/);
+      if (tapVerbMatch) {
+        currentExercise.type = 'multiple_choice';
+        const [, subject, optA, optB, tail] = tapVerbMatch;
+        currentExercise.items.push({
+          id: num,
+          prompt: `${subject} ___ ${tail.trim()}`.trim(),
+          options: [optA, optB],
+          correct: 0,
+          answer: '',
+        });
+      } else if (rawContent.includes('| ANSWER:') || rawContent.includes('|ANSWER:')) {
         const parts = rawContent.split(/\s*\|\s*/);
         const prompt = parts[0].trim();
         const answerPart = parts.find(p => /^ANSWER:/i.test(p));
@@ -508,6 +525,20 @@ function mergeAnswerKey(exercises, answerKey) {
             const letter = m[2].toLowerCase();
             item.answer = letter.toUpperCase();
             item.correct = letter.charCodeAt(0) - 97; // a→0, b→1, c→2, d→3
+          }
+          continue;
+        }
+        // Fallback: the answer line is a full corrected sentence rather than
+        // a bare letter (e.g. two-option "tap" exercises where the key just
+        // writes out "1. I work hard." instead of "1-b") -- find which
+        // option's word appears in it and use that as the correct index.
+        const fullMatch = t.match(/^(\d+)[.)]\s*(.*)/);
+        if (fullMatch) {
+          const item = ex.items.find(it => it.id === parseInt(fullMatch[1]));
+          if (item && Array.isArray(item.options) && item.options.length) {
+            const words = fullMatch[2].toLowerCase().split(/[^a-z']+/i).filter(Boolean);
+            const idx = item.options.findIndex(opt => words.includes(opt.toLowerCase()));
+            if (idx !== -1) { item.correct = idx; item.answer = String.fromCharCode(65 + idx); }
           }
         }
         continue;
