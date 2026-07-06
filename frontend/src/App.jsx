@@ -1613,16 +1613,43 @@ function TwoColumnSortExercise({ item, onNext, categories }) {
   const [columns, setColumns] = useState({ [categories[0]]: '', [categories[1]]: '' });
   const [submitted, setSubmitted] = useState(false);
 
-  function normalize(s) { return (s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  // Strip accents too (café/cafe should count the same) -- students typing a
+  // long phrase from memory shouldn't be marked wrong over a missing diacritic
+  // or a keyboard that doesn't easily produce one.
+  function normalize(s) {
+    return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
   // The blank in q.term ("___ big office...") isn't what students should type
   // -- they fill it in with the article, e.g. "a big office...". Check each
   // column against that filled-in form, not the raw blank.
   function completed(term, cat) { return (term || '').replace(/_{2,}/g, cat); }
 
+  function levenshtein(a, b) {
+    const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array(b.length).fill(0)]);
+    for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        dp[i][j] = a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    return dp[a.length][b.length];
+  }
+  // Typing out a whole phrase from memory is typo-prone in a way that has
+  // nothing to do with the actual grammar point being tested -- tolerate a
+  // small number of character-level slips rather than requiring an exact
+  // match.
+  function fuzzyEquals(a, b) {
+    if (a === b) return true;
+    const dist = levenshtein(a, b);
+    return dist <= Math.max(2, Math.round(Math.max(a.length, b.length) * 0.15));
+  }
+
   function placedCategory(q) {
     return categories.find(cat => {
       const expected = normalize(completed(q.term, cat));
-      return (columns[cat] || '').split('\n').some(line => normalize(line) === expected);
+      return (columns[cat] || '').split('\n').some(line => fuzzyEquals(normalize(line), expected));
     }) || null;
   }
 
