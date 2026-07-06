@@ -72,17 +72,24 @@ router.post('/content', async (req, res) => {
       [req.school.id, level, skill]
     );
   } else {
-    // Delete specific lesson numbers before inserting to prevent duplicates
+    // Delete specific lesson numbers before inserting to prevent duplicates.
+    // Match on the "lesson_N" tag (set by every parser format) rather than
+    // reconstructing the title prefix -- title wording/punctuation has changed
+    // across parser format revisions and a text match silently misses stale
+    // rows, which then accumulate as duplicates on every re-upload. Scoping by
+    // skill too, since lesson numbers restart per skill (Grammar Lesson 1 and
+    // Vocabulary Lesson 1 both exist) and a match without it deletes the wrong
+    // skill's rows.
     for (const lesson of lessons) {
       const num = lesson.lessonNumber;
       if (!num) continue;
       const { rowCount } = await query(
-        `DELETE FROM content_items 
-         WHERE school_id = $1 AND level = $2
-         AND (title LIKE $3 OR title LIKE $4)`,
-        [req.school.id, level, `Lesson ${num}: %`, `Lesson ${num} – %`]
+        `DELETE FROM content_items
+         WHERE school_id = $1 AND level = $2 AND skill = $3
+         AND $4 = ANY(tags)`,
+        [req.school.id, level, skill, `lesson_${num}`]
       );
-      console.log(`[upload] deleted ${rowCount} items for Lesson ${num}`);
+      console.log(`[upload] deleted ${rowCount} items for Lesson ${num} (skill=${skill})`);
     }
   }
 
