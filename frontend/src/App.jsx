@@ -1546,12 +1546,21 @@ function WrittenExercise({ item, onNext }) {
 }
 
 function SortExercise({ item, onNext }) {
+  const { items } = item.body;
+  const categories = [...new Set(items.map(i => i.answer).filter(Boolean))];
+
+  // "Sort into two columns" exercises (e.g. a / an) are categorized by typing
+  // each phrase into the column it belongs to, rather than picking from a
+  // dropdown -- that only reads naturally with exactly two columns.
+  if (categories.length === 2) return <TwoColumnSortExercise item={item} onNext={onNext} categories={categories} />;
+
+  return <DropdownSortExercise item={item} onNext={onNext} categories={categories} />;
+}
+
+function DropdownSortExercise({ item, onNext, categories }) {
   const { items, instructions } = item.body;
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
-
-  // Get unique categories
-  const categories = [...new Set(items.map(i => i.answer).filter(Boolean))];
 
   const score = submitted
     ? Math.round(items.filter(q => (answers[q.id] || '').toLowerCase() === (q.answer || '').toLowerCase()).length / items.length * 100)
@@ -1595,6 +1604,68 @@ function SortExercise({ item, onNext }) {
           </div>
         )}
       </div>
+    </Card>
+  );
+}
+
+function TwoColumnSortExercise({ item, onNext, categories }) {
+  const { items, instructions } = item.body;
+  const [columns, setColumns] = useState({ [categories[0]]: '', [categories[1]]: '' });
+  const [submitted, setSubmitted] = useState(false);
+
+  function normalize(s) { return (s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+
+  function placedCategory(term) {
+    const target = normalize(term);
+    return categories.find(cat => (columns[cat] || '').split('\n').some(line => normalize(line) === target)) || null;
+  }
+
+  function isCorrect(q) { return placedCategory(q.term) === q.answer; }
+  const allPlaced = items.every(q => placedCategory(q.term) !== null);
+  const score = submitted ? Math.round(items.filter(isCorrect).length / items.length * 100) : null;
+
+  return (
+    <Card className="p-6">
+      <p className="text-gray-600 mb-4">{instructions}</p>
+      <div className="bg-gray-50 rounded-lg p-4 mb-6">
+        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Phrases</div>
+        <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
+          {items.map(q => <li key={q.id}>{q.term}</li>)}
+        </ul>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {categories.map(cat => (
+          <div key={cat}>
+            <div className="text-sm font-bold text-gray-700 mb-2">"{cat}"</div>
+            <textarea
+              rows={8}
+              disabled={submitted}
+              value={columns[cat] || ''}
+              onChange={e => setColumns(c => ({ ...c, [cat]: e.target.value }))}
+              placeholder={`Type the phrases that use "${cat}" here, one per line...`}
+              className="w-full text-sm border-2 border-gray-200 rounded-lg p-3 focus:outline-none focus:border-indigo-400 disabled:bg-gray-50"
+            />
+          </div>
+        ))}
+      </div>
+      {!submitted ? (
+        <Button onClick={() => setSubmitted(true)} disabled={!allPlaced} className="mt-6">Check answers</Button>
+      ) : (
+        <div className="mt-6">
+          <div className="space-y-1 mb-4">
+            {items.map(q => (
+              <div key={q.id} className={`text-sm px-3 py-1.5 rounded-lg ${isCorrect(q) ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                {isCorrect(q) ? '✓' : '✗'} {q.term} — correct column: "{q.answer}"
+              </div>
+            ))}
+          </div>
+          <div className="p-4 rounded-xl bg-indigo-50 text-center">
+            <div className="text-2xl font-bold text-indigo-700">{score}%</div>
+            <div className="text-sm text-gray-600 mt-1">{score >= 80 ? "Great job! 🎉" : "Review the correct answers above."}</div>
+            {onNext && <button onClick={onNext} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Next Exercise ▶</button>}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

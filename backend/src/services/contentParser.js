@@ -26,7 +26,12 @@ export function parseContentFile(text, level, skill = 'grammar') {
   // Normalize line endings and collapse wrapped lines
   const normalized = text
     .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
+    .replace(/\r/g, '\n')
+    // Strip Private Use Area characters -- these only ever show up as leftover
+    // bullet-point glyphs (e.g. U+F0B7) from pasting a Word/Docs bulleted list
+    // into plain text; they're invisible in most editors but break exact-text
+    // matching (e.g. an un-numbered item's text vs. its answer-key line).
+    .replace(/[\u{E000}-\u{F8FF}]/gu, '');
 
   // Format 3: Markdown (has ## Exercise headings)
   if (/^##\s+Exercise/im.test(normalized)) {
@@ -158,7 +163,11 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     if (inAnswerKey) {
       const exMatch = line.match(/^exercise\s+([A-G])/i);
       if (exMatch) { currentAnswerSection = exMatch[1].toUpperCase(); answerKey[currentAnswerSection] = []; i++; continue; }
-      if (currentAnswerSection && line && /^\d+/.test(line)) answerKey[currentAnswerSection].push(line);
+      // Not just numbered lines -- a "sort into columns" answer key uses
+      // category headers ("a:") followed by plain phrase lines with no
+      // number at all. Type-specific parsing in mergeAnswerKey ignores
+      // whatever shape it doesn't recognize, so collecting more here is safe.
+      if (currentAnswerSection && line) answerKey[currentAnswerSection].push(line);
       i++; continue;
     }
 
@@ -168,7 +177,7 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     if (/^exercise\s+[A-G].*answer\s*key/i.test(line)) { i++; continue; }
     const exHeaderMatch = line.match(/^exercise\s+([A-G])\s*[–\-—:|\|]\s*(.+)/i);
     if (exHeaderMatch) {
-      if (currentExercise) exercises.push(currentExercise);
+      if (currentExercise) { demoteMatchingToFillBlank(currentExercise); exercises.push(currentExercise); }
       currentExercise = {
         letter: exHeaderMatch[1].toUpperCase(),
         title: exHeaderMatch[2].trim(),
@@ -180,11 +189,19 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     }
 
     if (!currentExercise) { i++; continue; }
-    if (currentExercise.items.length === 0 && line && !/^\d+[\.\)]/.test(line) && !/subject\s+verb/i.test(line)) {
-      if (line) currentExercise.instructions = line;
+    if (!currentExercise.instructions && currentExercise.items.length === 0 && line && !/^\d+[\.\)]/.test(line) && !/subject\s+verb/i.test(line)) {
+      currentExercise.instructions = line;
       i++; continue;
     }
     if (/^subject\s+verb/i.test(line)) { i++; continue; }
+
+    // "Sort into columns" exercises list plain phrases with no leading number
+    // at all (unlike every other exercise type here) -- each remaining line
+    // is its own item to categorize, auto-numbered.
+    if (currentExercise.type === 'sort' && line && !/^\d+[\.\)]/.test(line)) {
+      currentExercise.items.push({ id: currentExercise.items.length + 1, term: line, answer: '' });
+      i++; continue;
+    }
 
     // Collect a) b) c) d) options for multiple_choice exercises
     if (currentExercise.type === 'multiple_choice' && /^([a-d])[.)]\s*(.+)/i.test(line)) {
@@ -264,11 +281,27 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     i++;
   }
 
-  if (currentExercise) exercises.push(currentExercise);
+  if (currentExercise) { demoteMatchingToFillBlank(currentExercise); exercises.push(currentExercise); }
   mergeAnswerKey(exercises, answerKey);
 
   const contentItems = exercises.filter(ex => ex.items.length > 0).map(ex => toContentItem(ex, level, lessonNumber, lessonTitle, skill));
   return { lessonNumber, lessonTitle, contentItems, _nextLine: i };
+}
+
+// Some exercise titles ("Tap the correct article", "Choose the correct form")
+// are ambiguous -- they read as a matching/pairing exercise by keyword, but
+// the actual content is often just single-blank sentences with one answer
+// each, not term/definition pairs. A real matching exercise always produces
+// lettered definitions (_defs) or per-item definition/correctOption data; if
+// none of that exists, the title match was wrong -- fall back to fill_blank
+// and reshape the items to match (prompt/answer instead of term/definition).
+function demoteMatchingToFillBlank(ex) {
+  if (ex.type !== 'matching') return;
+  const hasRealMatchingData = (ex._defs && Object.keys(ex._defs).length > 0) ||
+    ex.items.some(it => it.definition || it.correctOption);
+  if (hasRealMatchingData) return;
+  ex.type = 'fill_blank';
+  ex.items = ex.items.map(it => ({ id: it.id, prompt: it.term || it.prompt || '', answer: it.answer || '', explanation: '' }));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -444,6 +477,14 @@ function parseItem(type, id, content) {
 function mergeAnswerKey(exercises, answerKey) {
   for (const ex of exercises) {
     const answers = answerKey[ex.letter] || [];
+
+    // "Sort into columns" answer keys are category headers ("a:") followed by
+    // plain phrase lines, not numbered lines -- handle that shape separately.
+    if (ex.type === 'sort' && answers.length > 0 && !answers.some(a => /^\d+[.)]/.test(a.trim()))) {
+      mergeSortCategoryAnswerKey(ex, answers);
+      continue;
+    }
+
     for (const ansLine of answers) {
       const t = ansLine.trim();
       // Skip meta-notes like "(Accept: isn't / aren't)"
@@ -490,6 +531,24 @@ function mergeAnswerKey(exercises, answerKey) {
         item.answer = answer;
       }
     }
+  }
+}
+
+// Matches each phrase line to an item by substituting the current category
+// word into that item's blank and comparing -- e.g. item.term
+// "___ big office in the city" under category "a" becomes "a big office in
+// the city", which is compared against the answer line of the same text.
+function mergeSortCategoryAnswerKey(ex, answers) {
+  let currentCategory = null;
+  const normalize = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  for (const raw of answers) {
+    const line = raw.trim();
+    const catMatch = line.match(/^([a-z]+)\s*:\s*$/i);
+    if (catMatch) { currentCategory = catMatch[1]; continue; }
+    if (!currentCategory || !line) continue;
+    const target = normalize(line);
+    const item = ex.items.find(it => normalize((it.term || '').replace(/_{2,}/g, currentCategory)) === target);
+    if (item) item.answer = currentCategory;
   }
 }
 
