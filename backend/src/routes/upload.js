@@ -202,7 +202,7 @@ router.get('/lessons', async (req, res) => {
      WHERE school_id = $1
        AND level = $2
        AND skill = $3
-       AND title ~ 'Lesson\\s+\\d+'
+       AND title ~ 'Lesson[[:space:]]+[0-9]+'
        AND is_active = true
      GROUP BY lesson_number
      ORDER BY lesson_number`,
