@@ -129,6 +129,25 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
 
     if ((/^lesson\s+\d+/i.test(line) || /^vocabulary\s+lesson\s+\d+/i.test(line) || /^📘\s*(vocabulary\s+)?lesson\s+\d+/i.test(line)) && !/answer key/i.test(line) && i > startIdx + 1) break;
 
+    // Some files leave a stray informal answer summary right after an exercise's
+    // questions, e.g. a bare "ANSWER KEY:" header with the condensed answers on
+    // the next line(s), before the real "Answer Key – Lesson N" section further
+    // down. Distinct from an inline "Answer Key: 1-d, 2-e" (content on the SAME
+    // line, deliberately left alone below) -- here nothing follows the colon on
+    // this line, so skip this line and the condensed-answer line(s) after it
+    // without touching the global answer-key state, so it can't swallow a real
+    // exercise header that happens to come after it in some other lesson file.
+    if (/^answer key\s*:\s*$/i.test(line)) {
+      i++;
+      while (i < lines.length && lines[i].trim() &&
+             !/^exercise\s+[A-G]/i.test(lines[i].trim()) &&
+             !/^lesson\s+\d+/i.test(lines[i].trim()) &&
+             !/^answer key/i.test(lines[i].trim())) {
+        i++;
+      }
+      continue;
+    }
+
     // Only enter global answer key mode for final answer key section (e.g. "Answer Key – Lesson 2")
     // NOT for inline per-exercise answer keys like "Answer Key: 1-d, 2-e" or standalone "Answer Key:"
     const isStandaloneAK = /^answer key\s*[–\-—]\s*lesson/i.test(line) ||

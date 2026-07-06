@@ -1319,31 +1319,58 @@ function MultipleChoiceExercise({ item, onNext }) {
 }
 
 function FillBlankExercise({ item, onNext }) {
-  const [answers, setAnswers] = useState({});
+  const [answers, setAnswers] = useState({}); // answers[q.id] = array, one entry per blank
   const [submitted, setSubmitted] = useState(false);
   const { items, instructions } = item.body;
 
+  // Blanks are runs of 2+ underscores of any length -- source files aren't
+  // consistent about using exactly 5. A sentence can have more than one blank
+  // (e.g. "I have ___ meeting with ___ manager"), in which case the answer key
+  // gives one answer per blank separated by "/" (e.g. "a / the").
+  function segments(q) { return q.prompt.split(/_{2,}/); }
+  function expectedAnswers(q) { return (q.answer || '').split('/').map(a => a.trim().toLowerCase()).filter(Boolean); }
+  function isCorrect(q) {
+    const expected = expectedAnswers(q);
+    const given = (answers[q.id] || []).map(a => (a || '').trim().toLowerCase());
+    return expected.length > 0 && expected.length === given.length && expected.every((e, i) => e === given[i]);
+  }
+  function isAnswered(q) {
+    const blanks = segments(q).length - 1;
+    const given = answers[q.id] || [];
+    return blanks > 0 && given.length === blanks && given.every(a => (a || '').trim() !== '');
+  }
+
   function submit() { setSubmitted(true); }
-  const score = submitted ? Math.round(items.filter(q => (answers[q.id] || "").trim().toLowerCase() === q.answer.toLowerCase()).length / items.length * 100) : null;
+  const score = submitted ? Math.round(items.filter(isCorrect).length / items.length * 100) : null;
 
   return (
     <Card className="p-6">
       <p className="text-gray-600 mb-6">{instructions}</p>
       <div className="space-y-5">
         {items.map(q => {
-          const correct = submitted && (answers[q.id] || "").trim().toLowerCase() === q.answer.toLowerCase();
+          const parts = segments(q);
+          const blankCount = parts.length - 1;
+          const correct = submitted && isCorrect(q);
           const wrong = submitted && !correct;
           return (
             <div key={q.id}>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-gray-900">{q.prompt.split("_____")[0]}</span>
-                <input
-                  className={`border-b-2 w-28 px-1 text-center text-sm focus:outline-none transition-colors ${submitted ? (correct ? "border-green-500 text-green-700 bg-green-50" : "border-red-400 text-red-700 bg-red-50") : "border-indigo-400 focus:border-indigo-600"}`}
-                  value={answers[q.id] || ""}
-                  onChange={e => !submitted && setAnswers(a => ({ ...a, [q.id]: e.target.value }))}
-                  disabled={submitted}
-                />
-                <span className="text-gray-900">{q.prompt.split("_____")[1]}</span>
+                {parts.map((seg, i) => [
+                  <span key={`seg-${i}`} className="text-gray-900">{seg}</span>,
+                  i < blankCount && (
+                    <input
+                      key={`blank-${i}`}
+                      className={`border-b-2 w-28 px-1 text-center text-sm focus:outline-none transition-colors ${submitted ? (correct ? "border-green-500 text-green-700 bg-green-50" : "border-red-400 text-red-700 bg-red-50") : "border-indigo-400 focus:border-indigo-600"}`}
+                      value={(answers[q.id] || [])[i] || ""}
+                      onChange={e => !submitted && setAnswers(a => {
+                        const arr = [...(a[q.id] || [])];
+                        arr[i] = e.target.value;
+                        return { ...a, [q.id]: arr };
+                      })}
+                      disabled={submitted}
+                    />
+                  ),
+                ])}
               </div>
               {wrong && <p className="text-xs text-gray-500 mt-1 ml-4">✓ Answer: <strong>{q.answer}</strong> — {q.explanation}</p>}
             </div>
@@ -1351,7 +1378,7 @@ function FillBlankExercise({ item, onNext }) {
         })}
       </div>
       {!submitted ? (
-        <Button onClick={submit} disabled={Object.keys(answers).length < items.length} className="mt-6">Submit</Button>
+        <Button onClick={submit} disabled={!items.every(isAnswered)} className="mt-6">Submit</Button>
       ) : (
         <div className="mt-6 p-4 rounded-xl bg-indigo-50 text-center">
           <div className="text-2xl font-bold text-indigo-700">{score}%</div>
