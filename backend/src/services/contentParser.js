@@ -318,6 +318,24 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
           : { id: pushedItem.id, prompt: baseText, options: [optA, optB], correct: 0, answer: '' };
         currentExercise.type = isJudgment ? 'true_false' : 'multiple_choice';
         i++; // consume the options line too
+      } else if (pushedItem && peekLine && !/^\d+[\.\)]/.test(peekLine) &&
+                 wordOverlapRatio(pushedItem.prompt || pushedItem.term || '', peekLine) >= 0.6) {
+        // "Tap the correct sentence" exercises: a full sentence, then a
+        // second full sentence right below it -- one grammatically right,
+        // one wrong, using mostly the same words in a different order/place.
+        // High word overlap with the sentence just parsed is what tells
+        // this apart from an unrelated line (an instructions line, a new
+        // item, etc.) rather than the second half of the same question.
+        const baseText = pushedItem.prompt || pushedItem.term || '';
+        currentExercise.items[currentExercise.items.length - 1] = {
+          id: pushedItem.id,
+          prompt: 'Which sentence is correct?',
+          options: [baseText, peekLine],
+          correct: 0,
+          answer: '',
+        };
+        currentExercise.type = 'multiple_choice';
+        i++; // consume the second sentence too
       }
     }
     i++;
@@ -486,6 +504,20 @@ function getInstructions(type) {
 // SHARED HELPERS
 // ─────────────────────────────────────────────────────────────
 
+// Fraction of the smaller word set that also appears in the other -- used to
+// tell "the second half of a two-sentence question" (mostly the same words,
+// reordered or moved) apart from an unrelated line that just happens to
+// follow a numbered item.
+function wordOverlapRatio(a, b) {
+  const words = s => new Set(s.toLowerCase().replace(/[^a-z0-9'\s]/g, '').split(/\s+/).filter(Boolean));
+  const wordsA = words(a);
+  const wordsB = words(b);
+  if (wordsA.size === 0 || wordsB.size === 0) return 0;
+  let shared = 0;
+  for (const w of wordsA) if (wordsB.has(w)) shared++;
+  return shared / Math.min(wordsA.size, wordsB.size);
+}
+
 function detectExerciseType(title) {
   const t = title.toLowerCase();
   if (t.includes('error correction') || t.includes('find and correct') || t.includes('correct the mistake')) return 'error_correction';
@@ -570,8 +602,17 @@ function mergeAnswerKey(exercises, answerKey) {
         if (fullMatch) {
           const item = ex.items.find(it => it.id === parseInt(fullMatch[1]));
           if (item && Array.isArray(item.options) && item.options.length) {
-            const words = fullMatch[2].toLowerCase().split(/[^a-z']+/i).filter(Boolean);
-            const idx = item.options.findIndex(opt => words.includes(opt.toLowerCase()));
+            const answerText = fullMatch[2];
+            const words = answerText.toLowerCase().split(/[^a-z']+/i).filter(Boolean);
+            let idx = item.options.findIndex(opt => words.includes(opt.toLowerCase()));
+            if (idx === -1) {
+              // Options are full sentences ("tap the correct sentence" style)
+              // rather than single words -- compare the whole normalized
+              // text instead of looking for one matching word.
+              const normalize = s => s.toLowerCase().replace(/[^a-z0-9']+/g, ' ').trim();
+              const target = normalize(answerText);
+              idx = item.options.findIndex(opt => normalize(opt) === target);
+            }
             if (idx !== -1) { item.correct = idx; item.answer = String.fromCharCode(65 + idx); }
           }
         }
