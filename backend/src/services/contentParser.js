@@ -200,6 +200,19 @@ function parseFormat1Lesson(lines, startIdx, level, skill = 'grammar') {
     }
     if (/^subject\s+verb/i.test(line)) { i++; continue; }
 
+    // Frequency/scale ordering exercises give one line of space-separated
+    // single words as the word bank to be ranked into a sequence, rather
+    // than numbered items -- one item holding the whole bank, reusing the
+    // tap-to-reorder sentence_reorder UI instead of building a new one.
+    if (currentExercise.items.length === 0 && line && !/^\d+[\.\)]/.test(line) &&
+        /^[a-z']+(\s+[a-z']+){2,}$/i.test(line) &&
+        (currentExercise.type === 'sort' || /\border(ing)?\b/i.test(currentExercise.title))) {
+      currentExercise.type = 'sentence_reorder';
+      currentExercise._wordBankOrdering = true;
+      currentExercise.items.push({ id: 1, words: line.split(/\s+/), answer: '' });
+      i++; continue;
+    }
+
     // "Sort into columns" exercises list plain phrases with no leading number
     // at all (unlike every other exercise type here) -- each remaining line
     // is its own item to categorize, auto-numbered.
@@ -564,6 +577,11 @@ function mergeAnswerKey(exercises, answerKey) {
       continue;
     }
 
+    if (ex._wordBankOrdering) {
+      mergeWordBankOrderingAnswerKey(ex, answers);
+      continue;
+    }
+
     for (const ansLine of answers) {
       const t = ansLine.trim();
       // Skip meta-notes like "(Accept: isn't / aren't)"
@@ -670,6 +688,26 @@ function mergeJudgmentAnswerKey(ex, answers) {
       pendingId = null;
     }
   }
+}
+
+// The answer key for a word-bank ordering exercise lists one word per
+// numbered line in rank order, not a single per-item answer -- assemble
+// them into the one item's `answer` (space-joined, matching how the
+// student's rearranged word order gets compared). Any answer-key word not
+// present in the original word bank is dropped rather than causing a
+// mismatch, so a scale the source over-specifies doesn't break grading.
+function mergeWordBankOrderingAnswerKey(ex, answers) {
+  const item = ex.items[0];
+  if (!item) return;
+  const bank = new Set(item.words.map(w => w.toLowerCase()));
+  const ordered = [];
+  for (const raw of answers) {
+    const m = raw.trim().match(/^(\d+)[.)]\s*(.*)/);
+    if (!m) continue;
+    const word = m[2].trim();
+    if (bank.has(word.toLowerCase())) ordered.push(word);
+  }
+  item.answer = ordered.join(' ');
 }
 
 // Matches each phrase line to an item by substituting the current category
